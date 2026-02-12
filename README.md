@@ -166,30 +166,4 @@ The mobile app consumes the backend API from the admin website:
 }
 ```
 
-## Troubleshooting
 
-### App won't start
-- Run `flutter doctor` to check dependencies
-- Ensure device/emulator is connected: `flutter devices`
-- Clean build: `flutter clean && flutter pub get`
-
-### Weight data not displaying
-- Check API base URL in `api_config.dart`
-- Verify backend API is running
-- Check network connectivity
-- Verify user has access to vehicle data
-
-### Location not showing
-- Check GPS permissions are granted
-- Verify backend API is returning location data
-- Ensure WebSocket connection is active
-
-### Can't connect to backend
-- Verify backend server is running on configured URL
-- Check firewall allows connections
-- Verify API endpoint is correct
-- Check network connectivity
-
-## Contributing
-
-See the main [README.md](../README.md) for contribution guidelines.
