@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:mobile/widget/navbar.dart';
 
+import '../services/auth_session_service.dart';
+import '../services/mobile_auth_service.dart';
 import 'login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -11,10 +13,11 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  static const String _firstName = 'Marques';
-  static const String _lastName = 'Driver';
-  static const String _email = 'marques.driver@weighguard.io';
-  static const String _joinedAt = 'Joined Jan 2026';
+  String _firstName = '';
+  String _lastName = '';
+  String _email = '';
+  String _status = '';
+  bool _profileLoaded = false;
 
   final TextEditingController _currentPassController = TextEditingController();
   final TextEditingController _newPassController = TextEditingController();
@@ -23,6 +26,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _obscureCurrent = true;
   bool _obscureNew = true;
   bool _obscureConfirm = true;
+  bool _isChangingPassword = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrentUserProfile();
+  }
+
+  Future<void> _loadCurrentUserProfile() async {
+    final profile = await AuthSessionService.getCurrentUserProfile();
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _firstName = profile['firstName'] ?? '';
+      _lastName = profile['lastName'] ?? '';
+      _email = profile['email'] ?? '';
+      _status = profile['status'] ?? '';
+      _profileLoaded = true;
+    });
+  }
 
   @override
   void dispose() {
@@ -38,7 +64,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return '$firstInitial$lastInitial'.toUpperCase();
   }
 
-  String get _fullName => '$_firstName $_lastName';
+  String get _fullName {
+    final fullName = '$_firstName $_lastName'.trim();
+    return fullName.isEmpty ? 'Unknown User' : fullName;
+  }
+
+  String get _roleBadge {
+    if (_status.isEmpty) {
+      return 'DRIVER';
+    }
+
+    return _status.toUpperCase();
+  }
+
+  String get _joinedAt {
+    return _profileLoaded ? 'Authenticated Session' : 'Loading profile...';
+  }
 
   void _confirmPasswordChange() {
     final String currentPass = _currentPassController.text.trim();
@@ -106,16 +147,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _applyPasswordChange() {
+  Future<void> _applyPasswordChange() async {
+    if (_isChangingPassword) {
+      return;
+    }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Password change confirmed (demo mode).')),
-    );
+    setState(() {
+      _isChangingPassword = true;
+    });
 
-    _currentPassController.clear();
-    _newPassController.clear();
-    _confirmPassController.clear();
-    FocusScope.of(context).unfocus();
+    try {
+      await MobileAuthService.changePassword(
+        currentPassword: _currentPassController.text.trim(),
+        newPassword: _newPassController.text.trim(),
+        confirmPassword: _confirmPassController.text.trim(),
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password updated successfully.')),
+      );
+
+      _currentPassController.clear();
+      _newPassController.clear();
+      _confirmPassController.clear();
+      FocusScope.of(context).unfocus();
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isChangingPassword = false;
+        });
+      }
+    }
   }
 
   void _showLogoutDialog(BuildContext context) {
@@ -139,7 +213,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
             ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
+                await AuthSessionService.clearSession();
+                if (!context.mounted) {
+                  return;
+                }
+
                 Navigator.of(context).pop();
                 Navigator.of(context).pushAndRemoveUntil(
                   MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
@@ -172,7 +251,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const AppNavbar(
                 title: 'Settings',
                 subtitle: 'Profile and account actions',
-                notificationCount: 0,
               ),
               const SizedBox(height: 18),
               Container(
@@ -216,8 +294,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               borderRadius: BorderRadius.circular(999),
                               border: Border.all(color: const Color(0xFF86EFAC).withValues(alpha: 0.45)),
                             ),
-                            child: const Text(
-                              'DRIVER',
+                            child: Text(
+                              _roleBadge,
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 9,
@@ -244,11 +322,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           const SizedBox(height: 5),
                           Text(
-                            _email,
+                            _email.isEmpty ? 'No email found' : _email,
                             style: const TextStyle(color: Colors.white70, fontSize: 12.5),
                           ),
                           const SizedBox(height: 3),
-                          const Text(
+                          Text(
                             _joinedAt,
                             style: TextStyle(color: Colors.white54, fontSize: 11.8),
                           ),
@@ -299,17 +377,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: _confirmPasswordChange,
+                        onPressed: _isChangingPassword ? null : _confirmPasswordChange,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF1A7B51),
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 13),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
-                        child: const Text(
-                          'Confirm Password Change',
-                          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
-                        ),
+                        child: _isChangingPassword
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              )
+                            : const Text(
+                                'Confirm Password Change',
+                                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                              ),
                       ),
                     ),
                   ],

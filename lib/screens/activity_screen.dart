@@ -24,7 +24,6 @@ class ActivityScreen extends StatelessWidget {
               const AppNavbar(
                 title: 'Activity',
                 subtitle: 'Trip alerts, logs, and cargo incident history',
-                notificationCount: 2,
               ),
               const SizedBox(height: 18),
               Row(

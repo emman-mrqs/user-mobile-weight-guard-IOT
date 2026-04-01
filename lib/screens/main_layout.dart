@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../services/mobile_notification_service.dart';
 import '../widget/bottom_nav.dart';
 import '../widget/coach_guide_overlay.dart';
 import 'dashboard_screen.dart'; 
@@ -61,6 +62,20 @@ class _MainLayoutState extends State<MainLayout> {
     const ActivityScreen(),
     const SettingsScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Start real-time notification polling when user enters the app
+    MobileNotificationService.startPeriodicPolling();
+  }
+
+  @override
+  void dispose() {
+    // Stop polling when user leaves the app or logs out
+    MobileNotificationService.stopPeriodicPolling();
+    super.dispose();
+  }
 
   void _dismissCoach() {
     setState(() {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/mobile_auth_service.dart';
 import 'forgot_password_screen.dart';
 import 'main_layout.dart';
 
@@ -13,7 +14,8 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
-  bool _hasError = false;
+  bool _isLoading = false;
+  String? _errorMessage;
 
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
@@ -22,16 +24,52 @@ class _LoginScreenState extends State<LoginScreen> {
   final FocusNode _emailFocus = FocusNode();
   final FocusNode _passwordFocus = FocusNode();
 
-  void _login() {
+  Future<void> _login() async {
+    if (_isLoading) {
+      return;
+    }
+
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      setState(() {
+        _errorMessage = 'Email and password are required.';
+      });
+      return;
+    }
+
     setState(() {
-      _hasError = false;
+      _errorMessage = null;
+      _isLoading = true;
     });
 
-    // No validation: always navigate to dashboard.
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const MainLayout()),
-    );
+    try {
+      await MobileAuthService.login(email: email, password: password);
+
+      if (!mounted) {
+        return;
+      }
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const MainLayout()),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _errorMessage = error.toString().replaceFirst('Exception: ', '');
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -144,11 +182,11 @@ class _LoginScreenState extends State<LoginScreen> {
                             focusNode: _passwordFocus, // Passed the focus node
                           ),
 
-                          if (_hasError) ...[
+                          if (_errorMessage != null) ...[
                             const SizedBox(height: 12),
-                            const Text(
-                              'Invalid email or password. Please try again.',
-                              style: TextStyle(
+                            Text(
+                              _errorMessage!,
+                              style: const TextStyle(
                                 color: Color(0xFFEF5350),
                                 fontSize: 13,
                               ),
@@ -163,7 +201,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             width: double.infinity,
                             height: 54,
                             child: ElevatedButton(
-                              onPressed: _login,
+                              onPressed: _isLoading ? null : _login,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF1A7B51),
                                 foregroundColor: Colors.white,
@@ -172,13 +210,22 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                                 elevation: 0,
                               ),
-                              child: const Text(
-                                'Login',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                      ),
+                                    )
+                                  : const Text(
+                                      'Login',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
                             ),
                           ),
                           const SizedBox(height: 16),

@@ -1,9 +1,10 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/auth_session_service.dart';
+import '../services/mobile_auth_service.dart';
 import 'login_screen.dart';
+import 'main_layout.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -13,39 +14,47 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  Timer? _timer;
-
   @override
   void initState() {
     super.initState();
-    _timer = Timer(const Duration(milliseconds: 2200), () {
-      if (!mounted) {
-        return;
-      }
-      Navigator.of(context).pushReplacement(
-        PageRouteBuilder<void>(
-          transitionDuration: const Duration(milliseconds: 450),
-          pageBuilder: (_, __, ___) => const LoginScreen(),
-          transitionsBuilder: (
-            BuildContext context,
-            Animation<double> animation,
-            Animation<double> secondaryAnimation,
-            Widget child,
-          ) {
-            return FadeTransition(
-              opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
-              child: child,
-            );
-          },
-        ),
-      );
-    });
+    _restoreSessionAndNavigate();
   }
 
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
+  Future<void> _restoreSessionAndNavigate() async {
+    final String? token = await AuthSessionService.getToken();
+
+    if (!mounted) {
+      return;
+    }
+
+    Widget targetScreen = const LoginScreen();
+
+    if (token != null && token.isNotEmpty) {
+      final isValid = await MobileAuthService.validateSession();
+      targetScreen = isValid ? const MainLayout() : const LoginScreen();
+    }
+
+    _navigateTo(targetScreen);
+  }
+
+  void _navigateTo(Widget targetScreen) {
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder<void>(
+        transitionDuration: const Duration(milliseconds: 450),
+        pageBuilder: (_, __, ___) => targetScreen,
+        transitionsBuilder: (
+          BuildContext context,
+          Animation<double> animation,
+          Animation<double> secondaryAnimation,
+          Widget child,
+        ) {
+          return FadeTransition(
+            opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
+            child: child,
+          );
+        },
+      ),
+    );
   }
 
   @override

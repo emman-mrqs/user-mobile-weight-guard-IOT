@@ -69,7 +69,6 @@ class TaskScreen extends StatelessWidget {
               const AppNavbar(
                 title: 'Tasks',
                 subtitle: 'Assigned tasks for the current driver',
-                notificationCount: 2,
               ),
               const SizedBox(height: 18),
               Container(

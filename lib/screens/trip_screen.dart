@@ -697,7 +697,6 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
               child: AppNavbar(
                 title: 'Trips',
                 subtitle: _tripStateLabel,
-                notificationCount: _incidents.length,
               ),
             ),
           ),
