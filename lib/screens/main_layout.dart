@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../services/auth_session_service.dart';
 import '../services/mobile_notification_service.dart';
 import '../widget/bottom_nav.dart';
 import '../widget/coach_guide_overlay.dart';
@@ -18,7 +19,7 @@ class MainLayout extends StatefulWidget {
 
 class _MainLayoutState extends State<MainLayout> {
   int _currentIndex = 0;
-  bool _showCoachOverlay = true;
+  bool _showCoachOverlay = false;
   int _coachStep = 0;
 
   static const List<_CoachStep> _coachSteps = <_CoachStep>[
@@ -68,6 +69,20 @@ class _MainLayoutState extends State<MainLayout> {
     super.initState();
     // Start real-time notification polling when user enters the app
     MobileNotificationService.startPeriodicPolling();
+    _loadCoachOverlayState();
+  }
+
+  Future<void> _loadCoachOverlayState() async {
+    final seen = await AuthSessionService.hasSeenCoachOverlay();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _showCoachOverlay = !seen;
+      _coachStep = 0;
+      _currentIndex = 0;
+    });
   }
 
   @override
@@ -77,8 +92,14 @@ class _MainLayoutState extends State<MainLayout> {
     super.dispose();
   }
 
-  void _dismissCoach() {
+  Future<void> _closeCoachToDashboard() async {
+    await AuthSessionService.markCoachOverlaySeen();
+    if (!mounted) {
+      return;
+    }
+
     setState(() {
+      _currentIndex = 0;
       _showCoachOverlay = false;
     });
   }
@@ -96,7 +117,7 @@ class _MainLayoutState extends State<MainLayout> {
 
   void _nextCoachStep() {
     if (_coachStep >= _coachSteps.length - 1) {
-      _dismissCoach();
+      _closeCoachToDashboard();
       return;
     }
 
@@ -133,7 +154,7 @@ class _MainLayoutState extends State<MainLayout> {
                 currentStep: _coachStep,
                 totalSteps: _coachSteps.length,
                 onNext: _nextCoachStep,
-                onSkip: _dismissCoach,
+                onSkip: _closeCoachToDashboard,
               ),
           ],
         ),

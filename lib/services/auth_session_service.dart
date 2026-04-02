@@ -13,6 +13,7 @@ class AuthSessionService {
   static const _lastNameKey = 'auth_last_name';
   static const _emailKey = 'auth_email';
   static const _statusKey = 'auth_status';
+  static const _coachSeenKey = 'coach_overlay_seen';
 
   static Future<void> saveSession({
     required String token,
@@ -100,5 +101,18 @@ class AuthSessionService {
     await _storage.delete(key: _lastNameKey);
     await _storage.delete(key: _emailKey);
     await _storage.delete(key: _statusKey);
+  }
+
+  static Future<bool> hasSeenCoachOverlay() async {
+    final raw = await _storage.read(key: _coachSeenKey);
+    return raw == 'true';
+  }
+
+  static Future<void> markCoachOverlaySeen() async {
+    await _storage.write(key: _coachSeenKey, value: 'true');
+  }
+
+  static Future<void> resetCoachOverlaySeen() async {
+    await _storage.delete(key: _coachSeenKey);
   }
 }

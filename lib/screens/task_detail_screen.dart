@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'task_instruction_screen.dart';
 import 'task_runtime_store.dart';
 
 class TaskDetailScreen extends StatefulWidget {
@@ -57,7 +56,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                'Task ${widget.task.taskId}  •  Driver ${widget.task.driverId}  •  Vehicle ${widget.task.vehicleId}',
+                'Task ${widget.task.taskId}  •  Driver ${widget.task.driverId}',
+                style: const TextStyle(color: Colors.white60, fontSize: 12),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Plate ${widget.task.vehiclePlateNumber}  •  ${widget.task.vehicleType}',
                 style: const TextStyle(color: Colors.white60, fontSize: 12),
               ),
               const SizedBox(height: 14),
@@ -127,6 +131,33 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   ],
                 ),
               ),
+              const SizedBox(height: 12),
+              _Card(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Text(
+                      'Detailed Instruction',
+                      style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '1. Proceed to ${widget.task.pickupName}.',
+                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '2. Load and verify cargo using the live scale monitor (max ${widget.task.maxTruckKg} kg).',
+                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '3. Complete the trip and deliver to ${widget.task.destinationName}.',
+                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 22),
               SizedBox(
                 width: double.infinity,
@@ -139,10 +170,14 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                     );
                     runtime.start();
 
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => TaskInstructionScreen(task: widget.task),
+                    setState(() {
+                      _runtime = runtime;
+                    });
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Task started. Follow the detailed instruction above.'),
+                        duration: Duration(seconds: 2),
                       ),
                     );
                   },
@@ -151,7 +186,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   ),
-                  child: const Text('Begin', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                  child: const Text('Begin Task', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
                 ),
               ),
             ],

@@ -11,6 +11,126 @@ import 'auth_session_service.dart';
 class MobileAuthService {
   static const Duration _loginTimeout = Duration(seconds: 15);
 
+  static Future<void> sendForgotPasswordCode({required String email}) async {
+    final uri = Uri.parse('${AppEnv.apiBaseUrl}${ApiRoutes.mobileAuthForgotPassword}');
+
+    late final http.Response response;
+    try {
+      response = await http
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'email': email,
+            }),
+          )
+          .timeout(_loginTimeout);
+    } on SocketException {
+      throw Exception('Cannot connect to server. Please check your internet and API URL.');
+    } on TimeoutException {
+      throw Exception('Request timed out. Please try again.');
+    } on Exception {
+      throw Exception('Failed to send reset code. Please try again.');
+    }
+
+    final Map<String, dynamic> data =
+        response.body.isEmpty ? <String, dynamic>{} : jsonDecode(response.body) as Map<String, dynamic>;
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return;
+    }
+
+    final message = (data['message'] ?? 'Failed to send reset code.').toString();
+    throw Exception(message);
+  }
+
+  static Future<void> verifyForgotPasswordCode({
+    required String email,
+    required String code,
+  }) async {
+    final uri = Uri.parse('${AppEnv.apiBaseUrl}${ApiRoutes.mobileAuthForgotPasswordVerifyCode}');
+
+    late final http.Response response;
+    try {
+      response = await http
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'email': email,
+              'code': code,
+            }),
+          )
+          .timeout(_loginTimeout);
+    } on SocketException {
+      throw Exception('Cannot connect to server. Please check your internet and API URL.');
+    } on TimeoutException {
+      throw Exception('Request timed out. Please try again.');
+    } on Exception {
+      throw Exception('Failed to verify code. Please try again.');
+    }
+
+    final Map<String, dynamic> data =
+        response.body.isEmpty ? <String, dynamic>{} : jsonDecode(response.body) as Map<String, dynamic>;
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return;
+    }
+
+    final message = (data['message'] ?? 'Failed to verify code.').toString();
+    throw Exception(message);
+  }
+
+  static Future<void> resetForgotPassword({
+    required String email,
+    required String code,
+    required String newPassword,
+    required String confirmPassword,
+  }) async {
+    final uri = Uri.parse('${AppEnv.apiBaseUrl}${ApiRoutes.mobileAuthForgotPasswordResetPassword}');
+
+    late final http.Response response;
+    try {
+      response = await http
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'email': email,
+              'code': code,
+              'newPassword': newPassword,
+              'confirmPassword': confirmPassword,
+            }),
+          )
+          .timeout(_loginTimeout);
+    } on SocketException {
+      throw Exception('Cannot connect to server. Please check your internet and API URL.');
+    } on TimeoutException {
+      throw Exception('Request timed out. Please try again.');
+    } on Exception {
+      throw Exception('Failed to reset password. Please try again.');
+    }
+
+    final Map<String, dynamic> data =
+        response.body.isEmpty ? <String, dynamic>{} : jsonDecode(response.body) as Map<String, dynamic>;
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return;
+    }
+
+    final message = (data['message'] ?? 'Failed to reset password.').toString();
+    throw Exception(message);
+  }
+
   static Future<Map<String, dynamic>> login({
     required String email,
     required String password,

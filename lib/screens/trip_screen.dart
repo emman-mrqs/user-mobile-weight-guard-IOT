@@ -60,6 +60,18 @@ class TimelineEntry {
   });
 }
 
+class _NavInstruction {
+  final String primary;
+  final String secondary;
+  final IconData icon;
+
+  const _NavInstruction({
+    required this.primary,
+    required this.secondary,
+    required this.icon,
+  });
+}
+
 class TripScreen extends StatefulWidget {
   const TripScreen({super.key});
 
@@ -69,17 +81,34 @@ class TripScreen extends StatefulWidget {
 
 class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
   final MapController _mapController = MapController();
+  static const int _maxAllowedCargoKg = 4500;
 
   static const LatLng _warehouse = LatLng(10.3090, 123.8930);
   static const LatLng _checkpoint1 = LatLng(10.3148, 123.9032);
   static const LatLng _checkpoint2 = LatLng(10.3237, 123.9209);
   static const LatLng _destination = LatLng(10.3342, 123.9411);
 
-  static const List<String> _routeDirections = <String>[
-    'Start at warehouse pickup zone.',
-    'Proceed via M.C. Briones Road.',
-    'Pass A.S. Fortuna checkpoint corridor.',
-    'Approach destination unloading gate.',
+  static const List<_NavInstruction> _routeDirections = <_NavInstruction>[
+    _NavInstruction(
+      primary: 'Head north from warehouse pickup zone',
+      secondary: 'M.C. Briones Service Road',
+      icon: Icons.straight,
+    ),
+    _NavInstruction(
+      primary: 'Keep right and continue to checkpoint corridor',
+      secondary: 'A.S. Fortuna Junction',
+      icon: Icons.turn_right_rounded,
+    ),
+    _NavInstruction(
+      primary: 'Slight left, stay on cargo route lane',
+      secondary: 'North Link Connector',
+      icon: Icons.turn_slight_left_rounded,
+    ),
+    _NavInstruction(
+      primary: 'Arrive at destination unloading gate',
+      secondary: 'Drop-off Bay Entrance',
+      icon: Icons.flag_circle_rounded,
+    ),
   ];
 
   late final List<LatLng> _plannedRoute;
@@ -98,6 +127,8 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
 
   double _currentWeightKg = 4300;
   double _lastWeightKg = 4300;
+  double _tripMinWeightKg = 4300;
+  double _tripMaxWeightKg = 4300;
 
   bool _isAutoFollow = true;
   bool _showLayoverInfo = true;
@@ -193,6 +224,8 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
       _vehiclePosition = _plannedRoute.first;
       _currentWeightKg = 4300;
       _lastWeightKg = 4300;
+      _tripMinWeightKg = 4300;
+      _tripMaxWeightKg = 4300;
       _highlightIncidentId = null;
     });
 
@@ -264,6 +297,8 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
     final double after = sample.weightKg;
     _lastWeightKg = before;
     _currentWeightKg = after;
+    _tripMinWeightKg = math.min(_tripMinWeightKg, after);
+    _tripMaxWeightKg = math.max(_tripMaxWeightKg, after);
 
     _routeInstructionIndex = _directionIndexForProgress(sample.routeIndex);
 
@@ -472,23 +507,6 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
     );
   }
 
-  void _focusTimelineEntry(TimelineEntry entry) {
-    _animateCameraTo(entry.location, zoom: 16.6, duration: const Duration(milliseconds: 520));
-
-    setState(() {
-      _highlightIncidentId = entry.incidentId;
-      _isAutoFollow = false;
-    });
-
-    if (entry.incidentId != null) {
-      final int index = _incidents.indexWhere((TripIncident i) => i.id == entry.incidentId);
-      final TripIncident? incident = index >= 0 ? _incidents[index] : null;
-      if (incident != null) {
-        _showIncidentSheet(incident);
-      }
-    }
-  }
-
   int _directionIndexForProgress(int routeIndex) {
     if (_denseRoute.length <= 1) {
       return 0;
@@ -504,6 +522,34 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
       return 2;
     }
     return 3;
+  }
+
+  double get _routeProgress {
+    if (_denseRoute.length <= 1) {
+      return 0;
+    }
+    return (_telemetryCursor / (_denseRoute.length - 1)).clamp(0, 1);
+  }
+
+  double get _remainingKm {
+    final Distance distance = const Distance();
+    return distance.as(LengthUnit.Kilometer, _vehiclePosition, _destination);
+  }
+
+  String get _etaLabel {
+    // Frontend estimate only (no traffic API): assume ~38 km/h average city speed.
+    final double minutes = (_remainingKm / 38) * 60;
+    final int rounded = minutes <= 1 ? 1 : minutes.round();
+    return '$rounded min';
+  }
+
+  _NavInstruction get _currentInstruction {
+    return _routeDirections[_routeInstructionIndex.clamp(0, _routeDirections.length - 1)];
+  }
+
+  _NavInstruction get _nextInstruction {
+    final int next = (_routeInstructionIndex + 1).clamp(0, _routeDirections.length - 1);
+    return _routeDirections[next];
   }
 
   String get _tripStateLabel {
@@ -704,39 +750,107 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
             left: 16,
             right: 16,
             top: 104,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              child: !_showLayoverInfo
-                  ? const SizedBox.shrink()
-                  : Container(
-                      key: const ValueKey<String>('route_overlay'),
-                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0C2B22).withValues(alpha: 0.92),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white12),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0C2B22).withValues(alpha: 0.96),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white12),
+                boxShadow: <BoxShadow>[
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.32),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      const Text(
+                        'Turn-by-turn Route',
+                        style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          const Text(
-                            'Route By Route',
-                            style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            _routeDirections[_routeInstructionIndex],
-                            style: const TextStyle(color: Colors.white70, fontSize: 12.5),
-                          ),
-                        ],
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF08241B),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: Colors.white10),
+                        ),
+                        child: Text(
+                          _tripPhase == TripPhase.during ? 'ETA $_etaLabel' : 'Ready',
+                          style: const TextStyle(color: Colors.white70, fontSize: 10.8, fontWeight: FontWeight.w700),
+                        ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF08241B),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(_currentInstruction.icon, color: const Color(0xFF4ADE80), size: 20),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              _tripPhase == TripPhase.before
+                                  ? 'Start trip to begin guidance'
+                                  : _tripPhase == TripPhase.after
+                                      ? 'Trip complete. You arrived at destination.'
+                                      : _currentInstruction.primary,
+                              style: const TextStyle(color: Colors.white, fontSize: 13.2, fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _tripPhase == TripPhase.during
+                                  ? '${_currentInstruction.secondary}  •  ${_remainingKm.toStringAsFixed(2)} km remaining'
+                                  : _currentInstruction.secondary,
+                              style: const TextStyle(color: Colors.white70, fontSize: 11.5),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(
+                      value: _tripPhase == TripPhase.after ? 1 : _routeProgress,
+                      minHeight: 7,
+                      backgroundColor: Colors.white.withValues(alpha: 0.12),
+                      valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF4ADE80)),
                     ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _tripPhase == TripPhase.during
+                        ? 'Next: ${_nextInstruction.primary}'
+                        : 'Guidance panel remains visible even when info cards are hidden.',
+                    style: const TextStyle(color: Colors.white60, fontSize: 10.8),
+                  ),
+                ],
+              ),
             ),
           ),
           if (_tripPhase == TripPhase.during && !_isAutoFollow)
             Positioned(
               right: 16,
-              bottom: _showLayoverInfo ? 352 + bottomInset : 126 + bottomInset,
+              bottom: _showLayoverInfo ? 368 + bottomInset : 108 + bottomInset,
               child: FloatingActionButton.small(
                 onPressed: _recenterAndResumeFollow,
                 backgroundColor: const Color(0xFF0C2B22),
@@ -745,19 +859,19 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
               ),
             ),
           Positioned(
-            left: 16,
-            right: 16,
-            bottom: 90 + bottomInset,
+            left: 0,
+            right: 0,
+            bottom: 0,
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 220),
               child: !_showLayoverInfo
                   ? const SizedBox.shrink()
                   : Container(
                       key: const ValueKey<String>('active_trip_overlay'),
-                      padding: const EdgeInsets.all(16),
+                      padding: EdgeInsets.fromLTRB(16, 16, 16, 110 + bottomInset),
                       decoration: BoxDecoration(
                         color: const Color(0xFF0C2B22).withValues(alpha: 0.95),
-                        borderRadius: BorderRadius.circular(18),
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
                         border: Border.all(color: Colors.white12),
                         boxShadow: <BoxShadow>[
                           BoxShadow(
@@ -792,142 +906,122 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
                             ],
                           ),
                           const SizedBox(height: 10),
-                          Text(
-                            'Pickup: ${_warehouse.latitude.toStringAsFixed(4)}, ${_warehouse.longitude.toStringAsFixed(4)}',
-                            style: const TextStyle(color: Colors.white70, fontSize: 12.4),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            'Destination: ${_destination.latitude.toStringAsFixed(4)}, ${_destination.longitude.toStringAsFixed(4)}',
-                            style: const TextStyle(color: Colors.white70, fontSize: 12.4),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            'Vehicle: ${_vehiclePosition.latitude.toStringAsFixed(5)}, ${_vehiclePosition.longitude.toStringAsFixed(5)}',
-                            style: const TextStyle(color: Colors.white60, fontSize: 11.8),
-                          ),
-                          const SizedBox(height: 12),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                            padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
                             decoration: BoxDecoration(
                               color: const Color(0xFF08241B),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(color: Colors.white10),
                             ),
-                            child: Row(
+                            child: Column(
                               children: <Widget>[
-                                Expanded(
-                                  child: Text(
-                                    '${_currentWeightKg.toStringAsFixed(0)} kg',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
+                                _TripTimelineNode(
+                                  title: 'Go to pickup point',
+                                  subtitle:
+                                      'Warehouse ${_warehouse.latitude.toStringAsFixed(4)}, ${_warehouse.longitude.toStringAsFixed(4)}',
+                                  isDone: _tripPhase != TripPhase.before,
+                                  isActive: _tripPhase == TripPhase.before,
+                                  isLast: false,
                                 ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: _cargoStatusColor.withValues(alpha: 0.17),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: Text(
-                                    _cargoStatus,
-                                    style: TextStyle(
-                                      color: _cargoStatusColor,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
+                                _TripTimelineNode(
+                                  title: 'Load cargo within maximum weight',
+                                  subtitle:
+                                      'Current ${_currentWeightKg.toStringAsFixed(0)} kg / Max $_maxAllowedCargoKg kg (${_cargoStatus.toUpperCase()})',
+                                  isDone: _tripPhase == TripPhase.after,
+                                  isActive: _tripPhase == TripPhase.during,
+                                  isLast: false,
+                                  accentColor: _cargoStatusColor,
+                                ),
+                                _TripTimelineNode(
+                                  title: 'Proceed to drop-off point',
+                                  subtitle:
+                                      'Destination ${_destination.latitude.toStringAsFixed(4)}, ${_destination.longitude.toStringAsFixed(4)}',
+                                  isDone: _tripPhase == TripPhase.after,
+                                  isActive: _tripPhase == TripPhase.during,
+                                  isLast: true,
                                 ),
                               ],
                             ),
                           ),
                           const SizedBox(height: 10),
-                          Row(
-                            children: <Widget>[
-                              Expanded(
-                                child: _TimelineCard(
-                                  title: 'Weight Timeline',
-                                  rows: _timeline
-                                      .reversed
-                                      .take(4)
-                                      .map(
-                                        (TimelineEntry entry) =>
-                                            '${_formatTime(entry.time)}  ${entry.beforeKg.toStringAsFixed(0)} -> ${entry.afterKg.toStringAsFixed(0)} kg',
-                                      )
-                                      .toList(),
+                          Container(
+                            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF08241B),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.white10),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                const Text(
+                                  'Live Load Tracker',
+                                  style: TextStyle(color: Colors.white, fontSize: 12.6, fontWeight: FontWeight.w700),
                                 ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: _TimelineCard(
-                                  title: 'Pick / Drop Timeline',
-                                  rows: <String>[
-                                    'Pickup ${_formatTime(_timeline.first.time)}',
-                                    'Checkpoint ${_formatTime(DateTime.now())}',
-                                    _tripPhase == TripPhase.after ? 'Dropoff Completed' : 'Dropoff Pending',
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          const Text(
-                            'Trip Replay Events',
-                            style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700),
-                          ),
-                          const SizedBox(height: 6),
-                          SizedBox(
-                            height: 78,
-                            child: ListView.separated(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: _timeline.length,
-                              separatorBuilder: (_, __) => const SizedBox(width: 8),
-                              itemBuilder: (BuildContext context, int index) {
-                                final TimelineEntry entry = _timeline[_timeline.length - 1 - index];
-                                final bool isIncident = entry.incidentId != null;
-                                return GestureDetector(
-                                  onTap: () => _focusTimelineEntry(entry),
-                                  child: Container(
-                                    width: 136,
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: isIncident
-                                          ? const Color(0xFFEF4444).withValues(alpha: 0.16)
-                                          : Colors.white.withValues(alpha: 0.08),
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(
-                                        color: isIncident ? const Color(0xFFEF4444).withValues(alpha: 0.6) : Colors.white10,
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: <Widget>[
+                                    Expanded(
+                                      child: Text(
+                                        '${_currentWeightKg.toStringAsFixed(0)} kg',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w800,
+                                        ),
                                       ),
                                     ),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: <Widget>[
-                                        Text(
-                                          _formatTime(entry.time),
-                                          style: const TextStyle(color: Colors.white70, fontSize: 11),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: _cargoStatusColor.withValues(alpha: 0.17),
+                                        borderRadius: BorderRadius.circular(999),
+                                      ),
+                                      child: Text(
+                                        _cargoStatus,
+                                        style: TextStyle(
+                                          color: _cargoStatusColor,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
                                         ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          '${entry.afterKg.toStringAsFixed(0)} kg',
-                                          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          isIncident ? 'Incident Location' : 'Telemetry Point',
-                                          style: TextStyle(
-                                            color: isIncident ? const Color(0xFFEF4444) : Colors.white54,
-                                            fontSize: 10.5,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
+                                      ),
                                     ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(999),
+                                  child: LinearProgressIndicator(
+                                    value: (_currentWeightKg / _maxAllowedCargoKg).clamp(0, 1),
+                                    minHeight: 8,
+                                    backgroundColor: Colors.white.withValues(alpha: 0.12),
+                                    valueColor: AlwaysStoppedAnimation<Color>(_cargoStatusColor),
                                   ),
-                                );
-                              },
+                                ),
+                                const SizedBox(height: 8),
+                                Wrap(
+                                  spacing: 12,
+                                  runSpacing: 4,
+                                  children: <Widget>[
+                                    Text(
+                                      'Max allowed: $_maxAllowedCargoKg kg',
+                                      style: const TextStyle(color: Colors.white60, fontSize: 11.2),
+                                    ),
+                                    Text(
+                                      'Trip min: ${_tripMinWeightKg.toStringAsFixed(0)} kg',
+                                      style: const TextStyle(color: Colors.white60, fontSize: 11.2),
+                                    ),
+                                    Text(
+                                      'Trip max: ${_tripMaxWeightKg.toStringAsFixed(0)} kg',
+                                      style: const TextStyle(color: Colors.white60, fontSize: 11.2),
+                                    ),
+                                    Text(
+                                      'Change: ${(_currentWeightKg - _lastWeightKg).toStringAsFixed(0)} kg',
+                                      style: const TextStyle(color: Colors.white60, fontSize: 11.2),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
                           ),
                           const SizedBox(height: 12),
@@ -976,7 +1070,7 @@ class _TripScreenState extends State<TripScreen> with TickerProviderStateMixin {
           Positioned(
             left: 0,
             right: 0,
-            bottom: 34 + bottomInset,
+            bottom: 18 + bottomInset,
             child: Center(
               child: GestureDetector(
                 onTap: () {
@@ -1068,38 +1162,85 @@ class _MapPin extends StatelessWidget {
   }
 }
 
-class _TimelineCard extends StatelessWidget {
+class _TripTimelineNode extends StatelessWidget {
   final String title;
-  final List<String> rows;
+  final String subtitle;
+  final bool isDone;
+  final bool isActive;
+  final bool isLast;
+  final Color? accentColor;
 
-  const _TimelineCard({required this.title, required this.rows});
+  const _TripTimelineNode({
+    required this.title,
+    required this.subtitle,
+    required this.isDone,
+    required this.isActive,
+    required this.isLast,
+    this.accentColor,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFF08241B),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Column(
+    final Color markerColor = isDone
+        ? const Color(0xFF4ADE80)
+        : isActive
+            ? (accentColor ?? const Color(0xFF22D3EE))
+            : Colors.white38;
+
+    return IntrinsicHeight(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(
-            title,
-            style: const TextStyle(color: Colors.white70, fontSize: 11.4, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 6),
-          ...rows.take(4).map(
-                (String row) => Padding(
-                  padding: const EdgeInsets.only(bottom: 3),
-                  child: Text(
-                    row,
-                    style: const TextStyle(color: Colors.white60, fontSize: 10.6),
-                  ),
+          Column(
+            children: <Widget>[
+              Container(
+                width: 16,
+                height: 16,
+                decoration: BoxDecoration(
+                  color: markerColor.withValues(alpha: 0.18),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: markerColor, width: 1.3),
+                ),
+                child: Icon(
+                  isDone ? Icons.check : Icons.circle,
+                  size: isDone ? 11 : 6,
+                  color: markerColor,
                 ),
               ),
+              if (!isLast)
+                Expanded(
+                  child: Container(
+                    width: 1.6,
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    color: Colors.white24,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: isActive ? Colors.white : Colors.white70,
+                      fontSize: 12.8,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(color: Colors.white60, fontSize: 11.2),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );

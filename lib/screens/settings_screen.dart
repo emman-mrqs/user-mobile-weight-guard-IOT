@@ -27,6 +27,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _obscureNew = true;
   bool _obscureConfirm = true;
   bool _isChangingPassword = false;
+  bool _isResettingCoachGuide = false;
 
   @override
   void initState() {
@@ -237,6 +238,87 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  void _showResetCoachGuideDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF0C2B22),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text(
+            'Show Coach Guide Again',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+          ),
+          content: const Text(
+            'This will show the onboarding coach guide again the next time you open the main app screen.',
+            style: TextStyle(color: Colors.white70),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+            ),
+            ElevatedButton(
+              onPressed: _isResettingCoachGuide
+                  ? null
+                  : () {
+                      Navigator.of(context).pop();
+                      _resetCoachGuide();
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1A7B51),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Reset Guide'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _resetCoachGuide() async {
+    if (_isResettingCoachGuide) {
+      return;
+    }
+
+    setState(() {
+      _isResettingCoachGuide = true;
+    });
+
+    try {
+      await AuthSessionService.resetCoachOverlaySeen();
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Coach guide reset. It will appear again on next app open.'),
+          backgroundColor: Color(0xFF166534),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Failed to reset coach guide. Please try again.'),
+          backgroundColor: Color(0xFF991B1B),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isResettingCoachGuide = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -403,6 +485,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _isResettingCoachGuide ? null : _showResetCoachGuideDialog,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0C2B22),
+                    foregroundColor: const Color(0xFF86EFAC),
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      side: const BorderSide(color: Colors.white12),
+                    ),
+                  ),
+                  icon: _isResettingCoachGuide
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF86EFAC)),
+                          ),
+                        )
+                      : const Icon(Icons.school_rounded, size: 18),
+                  label: Text(
+                    _isResettingCoachGuide ? 'Resetting Guide...' : 'Show Coach Guide Again',
+                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(

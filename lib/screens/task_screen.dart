@@ -5,64 +5,33 @@ import 'task_detail_screen.dart';
 class TaskScreen extends StatelessWidget {
   const TaskScreen({super.key});
 
-  static const List<_AssignedTask> _pendingTasks = <_AssignedTask>[
-    _AssignedTask(
-      taskId: 'T-10021',
-      vehicleId: 'VH-09',
-      driverId: 'DRV-014',
-      title: 'Verify route checkpoint at Mandaue',
-      tripCode: 'Trip C-219',
-      eta: '10:15 AM',
-      pickupName: 'Cebu Port Hub',
-      pickupLat: 10.3090,
-      pickupLng: 123.8930,
-      destinationName: 'Mandaue Checkpoint',
-      destinationLat: 10.3342,
-      destinationLng: 123.9411,
-      maxTruckKg: 3000,
-    ),
-    _AssignedTask(
-      taskId: 'T-10022',
-      vehicleId: 'VH-09',
-      driverId: 'DRV-014',
-      title: 'Confirm unloading weight in Toledo',
-      tripCode: 'Trip C-219',
-      eta: '01:40 PM',
-      pickupName: 'Mandaue Weigh Bridge',
-      pickupLat: 10.3251,
-      pickupLng: 123.9356,
-      destinationName: 'Toledo Cargo Yard',
-      destinationLat: 10.3784,
-      destinationLng: 123.6386,
-      maxTruckKg: 3000,
-    ),
-    _AssignedTask(
-      taskId: 'T-10023',
-      vehicleId: 'VH-09',
-      driverId: 'DRV-014',
-      title: 'Finalize delivery acknowledgment',
-      tripCode: 'Trip C-219',
-      eta: '03:10 PM',
-      pickupName: 'Toledo Cargo Yard',
-      pickupLat: 10.3784,
-      pickupLng: 123.6386,
-      destinationName: 'Naga Receiving Dock',
-      destinationLat: 10.2100,
-      destinationLng: 123.7587,
-      maxTruckKg: 3000,
-    ),
-  ];
+  static const _AssignedTask _assignedTask = _AssignedTask(
+    taskId: 'T-10021',
+    vehiclePlateNumber: 'GAB 4201',
+    vehicleType: 'Trailer Truck',
+    driverId: 'DRV-014',
+    title: 'Verify route checkpoint at Mandaue',
+    tripCode: 'Trip C-219',
+    eta: '10:15 AM',
+    pickupName: 'Cebu Port Hub',
+    pickupLat: 10.3090,
+    pickupLng: 123.8930,
+    destinationName: 'Mandaue Checkpoint',
+    destinationLat: 10.3342,
+    destinationLng: 123.9411,
+    maxTruckKg: 3000,
+  );
 
   @override
   Widget build(BuildContext context) {
-    final int pendingCount = _pendingTasks.length;
+    final _AssignedTask task = _assignedTask;
 
     return Container(
       color: const Color(0xFF051E16),
       child: SafeArea(
         bottom: false,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.only(left: 24, right: 24, top: 20, bottom: 120),
+          padding: const EdgeInsets.only(left: 24, right: 24, top: 20, bottom: 40),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
@@ -71,65 +40,136 @@ class TaskScreen extends StatelessWidget {
                 subtitle: 'Assigned tasks for the current driver',
               ),
               const SizedBox(height: 18),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0C2B22),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: Colors.white12),
-                ),
+              _InfoCard(
+                title: 'Assigned Task',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.04),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white10),
+                      ),
+                      child: Row(
+                        children: <Widget>[
+                          const Icon(
+                            Icons.near_me_rounded,
+                            size: 16,
+                            color: Color(0xFF4ADE80),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Current Location: ${task.pickupName}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: _LabelValueTile(
+                            label: 'Plate Number',
+                            value: task.vehiclePlateNumber,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _LabelValueTile(
+                            label: 'Vehicle Type',
+                            value: task.vehicleType,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      task.title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${task.tripCode}  •  ETA ${task.eta}',
+                      style: TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Task ${task.taskId}  •  Driver ${task.driverId}',
+                      style: TextStyle(color: Colors.white60, fontSize: 12),
+                    ),
+                    const SizedBox(height: 14),
                     const Text(
-                      'Pending Assigned Tasks',
+                      'Timeline',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 16,
+                        fontSize: 13,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      '$pendingCount tasks are waiting to be started',
-                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    _TimelineStep(
+                      title: 'Pickup',
+                      subtitle: task.pickupName,
+                      icon: Icons.my_location_rounded,
+                      isLast: false,
                     ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Initial reference weight, started at, and completed at will be created only after driver taps Start/Begin.',
-                      style: TextStyle(color: Colors.white60, fontSize: 12),
+                    _TimelineStep(
+                      title: 'Load Cargo',
+                      subtitle: 'Load and verify cargo up to ${task.maxTruckKg} kg',
+                      icon: Icons.inventory_2_outlined,
+                      isLast: false,
+                    ),
+                    _TimelineStep(
+                      title: 'Destination',
+                      subtitle: task.destinationName,
+                      icon: Icons.place_outlined,
+                      isLast: true,
+                    ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => TaskDetailScreen(task: task),
+                            ),
+                          );
+                        },
+                        style: TextButton.styleFrom(
+                          backgroundColor: const Color(0xFF1A7B51).withValues(alpha: 0.22),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                        ),
+                        child: const Text(
+                          'Start Task',
+                          style: TextStyle(
+                            color: Color(0xFF4ADE80),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 14),
-              ..._pendingTasks.map((task) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: _TaskCard(
-                      task: task,
-                      onStart: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => TaskDetailScreen(task: task),
-                          ),
-                        );
-                      },
-                    ),
-                  )),
-              if (_pendingTasks.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text(
-                    'No pending tasks assigned.',
-                    style: TextStyle(color: Colors.white60, fontSize: 13),
-                  ),
-                ),
-              const SizedBox(height: 2),
-              const Text(
-                'Flow: Pending -> Start -> Active/Loading -> Begin Trip (In Transit) -> Completed.',
-                style: TextStyle(color: Colors.white60, fontSize: 12),
               ),
             ],
           ),
@@ -139,88 +179,82 @@ class TaskScreen extends StatelessWidget {
   }
 }
 
-class _TaskCard extends StatelessWidget {
-  final _AssignedTask task;
-  final VoidCallback onStart;
+class _InfoCard extends StatelessWidget {
+  final String title;
+  final Widget child;
 
-  const _TaskCard({
-    required this.task,
-    required this.onStart,
+  const _InfoCard({
+    required this.title,
+    required this.child,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: const Color(0xFF0C2B22),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white12),
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.08),
-              shape: BoxShape.circle,
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
             ),
-            child: const Icon(
-              Icons.schedule_rounded,
-              size: 18,
+          ),
+          const SizedBox(height: 10),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _LabelValueTile extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _LabelValueTile({
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            label,
+            style: const TextStyle(
               color: Colors.white60,
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  task.title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '${task.tripCode}  •  ETA ${task.eta}',
-                  style: const TextStyle(
-                    color: Colors.white60,
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  'Task ${task.taskId}  •  Driver ${task.driverId}  •  Vehicle ${task.vehicleId}',
-                  style: const TextStyle(
-                    color: Colors.white54,
-                    fontSize: 11,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          TextButton(
-            onPressed: onStart,
-            style: TextButton.styleFrom(
-              backgroundColor: const Color(0xFF1A7B51).withValues(alpha: 0.22),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
-            ),
-            child: const Text(
-              'Start',
-              style: TextStyle(
-                color: Color(0xFF4ADE80),
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-              ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
@@ -229,9 +263,82 @@ class _TaskCard extends StatelessWidget {
   }
 }
 
+class _TimelineStep extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final bool isLast;
+
+  const _TimelineStep({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.isLast,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        SizedBox(
+          width: 26,
+          child: Column(
+            children: <Widget>[
+              Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A7B51).withValues(alpha: 0.24),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 13, color: const Color(0xFF4ADE80)),
+              ),
+              if (!isLast)
+                Container(
+                  width: 2,
+                  height: 26,
+                  color: Colors.white24,
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(bottom: isLast ? 0 : 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: Colors.white60,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _AssignedTask {
   final String taskId;
-  final String vehicleId;
+  final String vehiclePlateNumber;
+  final String vehicleType;
   final String driverId;
   final String title;
   final String tripCode;
@@ -246,7 +353,8 @@ class _AssignedTask {
 
   const _AssignedTask({
     required this.taskId,
-    required this.vehicleId,
+    required this.vehiclePlateNumber,
+    required this.vehicleType,
     required this.driverId,
     required this.title,
     required this.tripCode,
