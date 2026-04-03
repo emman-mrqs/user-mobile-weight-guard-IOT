@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/auth_session_service.dart';
+import '../services/mobile_activity_service.dart';
 import '../services/mobile_notification_service.dart';
+import '../services/mobile_task_service.dart';
 import '../widget/bottom_nav.dart';
 import '../widget/coach_guide_overlay.dart';
 import 'dashboard_screen.dart'; 
@@ -69,6 +71,8 @@ class _MainLayoutState extends State<MainLayout> {
     super.initState();
     // Start real-time notification polling when user enters the app
     MobileNotificationService.startPeriodicPolling();
+    MobileTaskService.startPeriodicPolling();
+    MobileActivityService.startPeriodicPolling();
     _loadCoachOverlayState();
   }
 
@@ -89,6 +93,8 @@ class _MainLayoutState extends State<MainLayout> {
   void dispose() {
     // Stop polling when user leaves the app or logs out
     MobileNotificationService.stopPeriodicPolling();
+    MobileTaskService.stopPeriodicPolling();
+    MobileActivityService.stopPeriodicPolling();
     super.dispose();
   }
 
@@ -173,6 +179,10 @@ class _MainLayoutState extends State<MainLayout> {
             setState(() {
               _currentIndex = index;
             });
+
+            if (index == 1) {
+              MobileTaskService.refreshCurrentTask(forceRefresh: true);
+            }
           },
         ),
       ),

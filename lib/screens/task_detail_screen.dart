@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mobile/services/mobile_task_service.dart';
 
 import 'task_runtime_store.dart';
 
@@ -25,6 +26,256 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
   }
 
+  Future<void> _confirmBeginTask() async {
+    final bool? shouldStart = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return SafeArea(
+          child: Container(
+            width: double.infinity,
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 14,
+              bottom: 20 + MediaQuery.of(context).padding.bottom,
+            ),
+            decoration: const BoxDecoration(
+              color: Color(0xFF0C2B22),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Center(
+                    child: Container(
+                      width: 44,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Start this task?',
+                    style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${widget.task.pickupName} → ${widget.task.destinationName}',
+                    style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 18),
+                  _ConfirmSummaryCard(
+                    icon: Icons.local_shipping_rounded,
+                    label: 'Vehicle',
+                    value: '${widget.task.vehiclePlateNumber} • ${widget.task.vehicleType}',
+                  ),
+                  const SizedBox(height: 10),
+                  _ConfirmSummaryCard(
+                    icon: Icons.route_rounded,
+                    label: 'Stage',
+                    value: '${widget.task.badgeLabel} • ETA ${widget.task.eta}',
+                  ),
+                  const SizedBox(height: 10),
+                  _ConfirmSummaryCard(
+                    icon: Icons.scale_rounded,
+                    label: 'Load limit',
+                    value: '${widget.task.maxTruckKg} kg max',
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white70,
+                            side: const BorderSide(color: Colors.white24),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => Navigator.of(context).pop(true),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF1A7B51),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                          child: const Text('Start Task', style: TextStyle(fontWeight: FontWeight.w700)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (shouldStart != true || !mounted) {
+      return;
+    }
+
+    try {
+      await MobileTaskService.startCurrentTask();
+      // Force refresh to ensure UI is synced with latest server state
+      await MobileTaskService.refreshCurrentTask(forceRefresh: true);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    final runtime = TaskRuntimeStore.forTask(
+      taskId: widget.task.taskId as String,
+      maxKg: widget.task.maxTruckKg as int,
+    );
+    runtime.start();
+
+    setState(() {
+      _runtime = runtime;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Task started. Follow the detailed instruction above.'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  ({bool isDone, bool isActive}) _resolveStepState(int index) {
+    final dynamic rawTimeline = widget.task.timeline;
+    if (rawTimeline is! List || rawTimeline.isEmpty) {
+      return (isDone: false, isActive: false);
+    }
+
+    final List<TaskTimelineStepData> steps = rawTimeline.whereType<TaskTimelineStepData>().toList();
+    if (steps.isEmpty) {
+      return (isDone: false, isActive: false);
+    }
+
+    const List<String> keys = <String>['pickup', 'load', 'destination'];
+    final String key = index >= 0 && index < keys.length ? keys[index] : '';
+    final TaskTimelineStepData? matched = steps.where((s) => s.key.toLowerCase() == key).cast<TaskTimelineStepData?>().firstWhere(
+          (s) => s != null,
+          orElse: () => null,
+        );
+
+    if (matched == null) {
+      return (isDone: false, isActive: false);
+    }
+
+    return (isDone: matched.isDone, isActive: matched.isActive);
+  }
+
+  List<Widget> _buildInstructionItems() {
+    final dynamic raw = widget.task.detailedInstructions;
+
+    if (raw is List && raw.isNotEmpty) {
+      final List<TaskInstructionStepData> steps = raw.whereType<TaskInstructionStepData>().toList();
+      if (steps.isNotEmpty) {
+        return steps.asMap().entries.map((entry) {
+          final int index = entry.key;
+          final TaskInstructionStepData step = entry.value;
+          final state = _resolveStepState(index);
+          final Color accent = state.isDone
+              ? const Color(0xFF4ADE80)
+              : state.isActive
+                  ? const Color(0xFF22D3EE)
+                  : Colors.white38;
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Container(
+                  width: 20,
+                  height: 20,
+                  margin: const EdgeInsets.only(top: 1),
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.18),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: accent.withValues(alpha: 0.7)),
+                  ),
+                  child: Center(
+                    child: state.isDone
+                        ? const Icon(Icons.check, size: 12, color: Color(0xFF4ADE80))
+                        : Text(
+                            '${step.step}',
+                            style: TextStyle(color: accent, fontSize: 10, fontWeight: FontWeight.w700),
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        step.title,
+                        style: TextStyle(
+                          color: state.isActive ? Colors.white : Colors.white70,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        step.detail,
+                        style: const TextStyle(color: Colors.white70, fontSize: 12.5),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList();
+      }
+    }
+
+    return <Widget>[
+      Text(
+        '1. Proceed to ${widget.task.pickupName}.',
+        style: const TextStyle(color: Colors.white70, fontSize: 13),
+      ),
+      const SizedBox(height: 4),
+      Text(
+        '2. Load and verify cargo using the live scale monitor (max ${widget.task.maxTruckKg} kg).',
+        style: const TextStyle(color: Colors.white70, fontSize: 13),
+      ),
+      const SizedBox(height: 4),
+      Text(
+        '3. Complete the trip and deliver to ${widget.task.destinationName}.',
+        style: const TextStyle(color: Colors.white70, fontSize: 13),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -42,7 +293,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Text(
-                widget.task.title as String,
+                'Current Dispatch',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 22,
@@ -51,17 +302,17 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                '${widget.task.tripCode}  •  ETA ${widget.task.eta}',
-                style: const TextStyle(color: Colors.white70, fontSize: 13),
+                '${widget.task.pickupName} → ${widget.task.destinationName}',
+                style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 4),
               Text(
-                'Task ${widget.task.taskId}  •  Driver ${widget.task.driverId}',
+                '${widget.task.summaryLabel}  •  ETA ${widget.task.eta}',
                 style: const TextStyle(color: Colors.white60, fontSize: 12),
               ),
               const SizedBox(height: 2),
               Text(
-                'Plate ${widget.task.vehiclePlateNumber}  •  ${widget.task.vehicleType}',
+                '${widget.task.vehiclePlateNumber}  •  ${widget.task.vehicleType}',
                 style: const TextStyle(color: Colors.white60, fontSize: 12),
               ),
               const SizedBox(height: 14),
@@ -141,20 +392,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                       style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      '1. Proceed to ${widget.task.pickupName}.',
-                      style: const TextStyle(color: Colors.white70, fontSize: 13),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '2. Load and verify cargo using the live scale monitor (max ${widget.task.maxTruckKg} kg).',
-                      style: const TextStyle(color: Colors.white70, fontSize: 13),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '3. Complete the trip and deliver to ${widget.task.destinationName}.',
-                      style: const TextStyle(color: Colors.white70, fontSize: 13),
-                    ),
+                    ..._buildInstructionItems(),
                   ],
                 ),
               ),
@@ -163,24 +401,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
-                  onPressed: () {
-                    final runtime = TaskRuntimeStore.forTask(
-                      taskId: widget.task.taskId as String,
-                      maxKg: widget.task.maxTruckKg as int,
-                    );
-                    runtime.start();
-
-                    setState(() {
-                      _runtime = runtime;
-                    });
-
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Task started. Follow the detailed instruction above.'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                  },
+                  onPressed: _confirmBeginTask,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF1A7B51),
                     foregroundColor: Colors.white,
@@ -213,6 +434,89 @@ class _Card extends StatelessWidget {
         border: Border.all(color: Colors.white12),
       ),
       child: child,
+    );
+  }
+}
+
+class _DialogRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _DialogRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SizedBox(
+            width: 92,
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ConfirmSummaryCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _ConfirmSummaryCard({required this.icon, required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A7B51).withValues(alpha: 0.24),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 18, color: const Color(0xFF4ADE80)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  label,
+                  style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

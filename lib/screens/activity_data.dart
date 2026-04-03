@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum ActivitySeverity { normal, warning, critical }
+enum ActivitySeverity { normal, warning, critical, completed, cancelled }
 
 class ActivityRecord {
   final String id;
@@ -37,6 +37,10 @@ class ActivityRecord {
         return 'Cargo Loss';
       case ActivitySeverity.warning:
         return 'Overload';
+      case ActivitySeverity.completed:
+        return 'Completed';
+      case ActivitySeverity.cancelled:
+        return 'Cancelled';
       case ActivitySeverity.normal:
         return 'Normal';
     }
@@ -48,6 +52,10 @@ class ActivityRecord {
         return const Color(0xFFEF4444);
       case ActivitySeverity.warning:
         return const Color(0xFFF59E0B);
+      case ActivitySeverity.completed:
+        return const Color(0xFF4ADE80);
+      case ActivitySeverity.cancelled:
+        return const Color(0xFF94A3B8);
       case ActivitySeverity.normal:
         return const Color(0xFF4ADE80);
     }

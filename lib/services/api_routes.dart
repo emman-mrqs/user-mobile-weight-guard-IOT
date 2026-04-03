@@ -8,4 +8,7 @@ class ApiRoutes {
   static const String mobileDashboard = '/dashboard';
   static const String mobileNotifications = '/notifications';
   static const String mobileNotificationsReadAll = '/notifications/read-all';
+  static const String mobileTaskCurrent = '/tasks/current';
+  static const String mobileTaskStart = '/tasks/current/start';
+  static const String mobileActivities = '/activities';
 }
