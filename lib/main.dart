@@ -1,7 +1,16 @@
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile/screens/splash_screen.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (_) {
+    // Fallback to compile-time defaults if the asset is missing.
+  }
+
   runApp(const WeighGuardApp());
 }
 

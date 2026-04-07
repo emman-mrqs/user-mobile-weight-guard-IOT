@@ -1,11 +1,13 @@
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 class AppEnv {
-  // Override with --dart-define=API_BASE_URL=https://your-production-domain/api/mobile
-  static const String apiBaseUrl = String.fromEnvironment(
+  // Prefer the packaged .env value, then dart-define, then the local default.
+  static String get apiBaseUrl => dotenv.env['API_BASE_URL'] ?? String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: 'http://10.0.2.2:3000/api/mobile',
   );
 
-  static const String appEnv = String.fromEnvironment(
+  static String get appEnv => dotenv.env['APP_ENV'] ?? String.fromEnvironment(
     'APP_ENV',
     defaultValue: 'local',
   );
