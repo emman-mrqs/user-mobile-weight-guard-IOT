@@ -55,7 +55,7 @@ class AppNavbar extends StatelessWidget {
       return 'Unknown';
     }
 
-    final twoDigits = (int value) => value.toString().padLeft(2, '0');
+    String twoDigits(int value) => value.toString().padLeft(2, '0');
     final local = dateTime.toLocal();
     return '${local.year}-${twoDigits(local.month)}-${twoDigits(local.day)} ${twoDigits(local.hour)}:${twoDigits(local.minute)}';
   }
@@ -264,6 +264,11 @@ class AppNavbar extends StatelessWidget {
       loadError = error.toString().replaceFirst('Exception: ', '');
     }
 
+    if (!context.mounted) {
+      _isSheetOpen = false;
+      return;
+    }
+
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -391,7 +396,7 @@ class AppNavbar extends StatelessWidget {
                         child: ListView.separated(
                           shrinkWrap: true,
                           itemCount: items.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 10),
+                          separatorBuilder: (_, _) => const SizedBox(height: 10),
                           itemBuilder: (context, index) {
                             final item = items[index];
                             return _NotificationTile(

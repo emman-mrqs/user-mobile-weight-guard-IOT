@@ -1,4 +1,5 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter/foundation.dart';
 
 class AuthSessionService {
   static const _storage = FlutterSecureStorage();
@@ -6,6 +7,10 @@ class AuthSessionService {
   static String? _cachedToken;
   static String? _cachedTokenType;
   static Map<String, String>? _cachedProfile;
+  static bool? _cachedMustChangePassword;
+
+  static final ValueNotifier<bool> currentUserPasswordChangeNotifier =
+      ValueNotifier<bool>(false);
 
   static const _tokenKey = 'auth_token';
   static const _tokenTypeKey = 'auth_token_type';
@@ -13,6 +18,7 @@ class AuthSessionService {
   static const _lastNameKey = 'auth_last_name';
   static const _emailKey = 'auth_email';
   static const _statusKey = 'auth_status';
+  static const _mustChangePasswordKey = 'auth_must_change_password';
   static const _coachSeenKey = 'coach_overlay_seen';
 
   static Future<void> saveSession({
@@ -27,17 +33,24 @@ class AuthSessionService {
   }
 
   static Future<void> saveUserProfile(Map<String, dynamic> user) async {
+    final String mustChangePasswordRaw = (user['mustChangePassword'] ?? '').toString().trim().toLowerCase();
+    final bool mustChangePassword = mustChangePasswordRaw == 'true';
+
     _cachedProfile = {
       'firstName': (user['firstName'] ?? '').toString(),
       'lastName': (user['lastName'] ?? '').toString(),
       'email': (user['email'] ?? '').toString(),
       'status': (user['status'] ?? '').toString(),
+      'mustChangePassword': mustChangePassword.toString(),
     };
+    _cachedMustChangePassword = mustChangePassword;
+    currentUserPasswordChangeNotifier.value = mustChangePassword;
 
     await _storage.write(key: _firstNameKey, value: (user['firstName'] ?? '').toString());
     await _storage.write(key: _lastNameKey, value: (user['lastName'] ?? '').toString());
     await _storage.write(key: _emailKey, value: (user['email'] ?? '').toString());
     await _storage.write(key: _statusKey, value: (user['status'] ?? '').toString());
+    await _storage.write(key: _mustChangePasswordKey, value: mustChangePassword.toString());
   }
 
   static Future<Map<String, String>> getCurrentUserProfile() async {
@@ -49,15 +62,42 @@ class AuthSessionService {
     final lastName = await _storage.read(key: _lastNameKey) ?? '';
     final email = await _storage.read(key: _emailKey) ?? '';
     final status = await _storage.read(key: _statusKey) ?? '';
+    final mustChangePassword = await _storage.read(key: _mustChangePasswordKey) ?? 'false';
 
     _cachedProfile = {
       'firstName': firstName,
       'lastName': lastName,
       'email': email,
       'status': status,
+      'mustChangePassword': mustChangePassword,
     };
+    _cachedMustChangePassword = mustChangePassword == 'true';
+    currentUserPasswordChangeNotifier.value = _cachedMustChangePassword!;
 
     return _cachedProfile!;
+  }
+
+  static Future<bool> mustChangePasswordRequired() async {
+    if (_cachedMustChangePassword != null) {
+      return _cachedMustChangePassword!;
+    }
+
+    final raw = await _storage.read(key: _mustChangePasswordKey) ?? 'false';
+    _cachedMustChangePassword = raw == 'true';
+    return _cachedMustChangePassword!;
+  }
+
+  static Future<void> setMustChangePasswordRequired(bool value) async {
+    _cachedMustChangePassword = value;
+    currentUserPasswordChangeNotifier.value = value;
+    if (_cachedProfile != null) {
+      _cachedProfile = <String, String>{
+        ..._cachedProfile!,
+        'mustChangePassword': value.toString(),
+      };
+    }
+
+    await _storage.write(key: _mustChangePasswordKey, value: value.toString());
   }
 
   static Future<String?> getToken() async {
@@ -94,6 +134,7 @@ class AuthSessionService {
     _cachedToken = null;
     _cachedTokenType = null;
     _cachedProfile = null;
+    currentUserPasswordChangeNotifier.value = false;
 
     await _storage.delete(key: _tokenKey);
     await _storage.delete(key: _tokenTypeKey);
@@ -101,6 +142,7 @@ class AuthSessionService {
     await _storage.delete(key: _lastNameKey);
     await _storage.delete(key: _emailKey);
     await _storage.delete(key: _statusKey);
+    await _storage.delete(key: _mustChangePasswordKey);
   }
 
   static Future<bool> hasSeenCoachOverlay() async {

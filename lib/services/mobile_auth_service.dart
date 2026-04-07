@@ -40,6 +40,7 @@ class MobileAuthService {
         response.body.isEmpty ? <String, dynamic>{} : jsonDecode(response.body) as Map<String, dynamic>;
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
+        await AuthSessionService.setMustChangePasswordRequired(false);
       return;
     }
 
@@ -80,6 +81,7 @@ class MobileAuthService {
         response.body.isEmpty ? <String, dynamic>{} : jsonDecode(response.body) as Map<String, dynamic>;
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
+      await AuthSessionService.setMustChangePasswordRequired(false);
       return;
     }
 
@@ -207,6 +209,13 @@ class MobileAuthService {
           .timeout(const Duration(seconds: 4));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
+        final Map<String, dynamic> data = response.body.isEmpty
+            ? <String, dynamic>{}
+            : jsonDecode(response.body) as Map<String, dynamic>;
+        final dynamic user = data['user'];
+        if (user is Map<String, dynamic>) {
+          await AuthSessionService.saveUserProfile(user);
+        }
         return true;
       }
 
@@ -282,6 +291,7 @@ class MobileAuthService {
         response.body.isEmpty ? <String, dynamic>{} : jsonDecode(response.body) as Map<String, dynamic>;
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
+      await AuthSessionService.setMustChangePasswordRequired(false);
       return;
     }
 

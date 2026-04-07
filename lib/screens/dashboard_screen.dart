@@ -2,6 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile/widget/navbar.dart';
 
+import '../services/app_tab_service.dart';
 import '../services/mobile_dashboard_service.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -59,6 +60,68 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return 0;
   }
 
+  Map<String, dynamic> _safeMap(dynamic value) {
+    if (value is Map<String, dynamic>) {
+      return value;
+    }
+    if (value is Map) {
+      return value.map((key, item) => MapEntry(key.toString(), item));
+    }
+    return <String, dynamic>{};
+  }
+
+  List<Map<String, dynamic>> _safeMapList(dynamic value) {
+    if (value is! List) {
+      return <Map<String, dynamic>>[];
+    }
+
+    return value
+        .whereType<Map>()
+        .map((item) => item.map((key, entry) => MapEntry(key.toString(), entry)))
+        .toList();
+  }
+
+  String _toLabel(dynamic value) {
+    return value
+        .toString()
+        .replaceAll('_', ' ')
+        .trim()
+        .split(' ')
+        .where((part) => part.isNotEmpty)
+        .map((part) => '${part[0].toUpperCase()}${part.substring(1).toLowerCase()}')
+        .join(' ');
+  }
+
+  Color _statusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'active':
+        return const Color(0xFF22C55E);
+      case 'in_transit':
+        return const Color(0xFF0EA5E9);
+      case 'completed':
+        return const Color(0xFF10B981);
+      case 'pending':
+        return const Color(0xFFF59E0B);
+      case 'cancelled':
+        return const Color(0xFFEF4444);
+      default:
+        return Colors.white70;
+    }
+  }
+
+  Color _severityColor(String severity) {
+    switch (severity.toLowerCase()) {
+      case 'critical':
+        return const Color(0xFFEF4444);
+      case 'high':
+        return const Color(0xFFF97316);
+      case 'warning':
+        return const Color(0xFFF59E0B);
+      default:
+        return const Color(0xFF94A3B8);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -112,20 +175,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
             final avgWeight = _safeToDouble(kpis['avgLoadKg']);
             final completedTasks = _safeToInt(kpis['tasksCompleted']);
-            final totalTasks = _safeToInt(kpis['totalTasks']);
-
-            double completionRate = _safeToDouble(kpis['completionRate']);
-            if (completionRate > 1) {
-              completionRate = completionRate / 100;
-            }
-            if (completionRate < 0) {
-              completionRate = 0;
-            }
-            if (completionRate > 1) {
-              completionRate = 1;
-            }
 
             final weightTrend = _parseWeightTrend(data['weightTrendKg']);
+            final assignedTask = _safeMap(data['assignedTask']);
+            final assignedTaskVehicle = _safeMap(assignedTask['vehicle']);
+            final assignedTaskRoute = _safeMap(assignedTask['route']);
+            final assignedTaskRoutePickup = _safeMap(assignedTaskRoute['pickup']);
+            final assignedTaskRouteDestination = _safeMap(assignedTaskRoute['destination']);
+            final assignedTaskLive = _safeMap(assignedTask['live']);
+            final recentIncidents = _safeMapList(data['recentIncidents']);
             final insights = (data['insights'] is List)
                 ? (data['insights'] as List)
                     .whereType<Map>()
@@ -274,41 +332,169 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                     const SizedBox(height: 16),
                     _ChartCard(
-                      title: 'Task Done Progress',
-                      subtitle: 'Daily operation completion status',
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: <Widget>[
-                              Text(
-                                'Completed: $completedTasks tasks',
-                                style: const TextStyle(fontSize: 13, color: Colors.white70),
-                              ),
-                              Text(
-                                'Pending: ${totalTasks - completedTasks}',
-                                style: const TextStyle(fontSize: 13, color: Colors.white70),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(999),
-                            child: LinearProgressIndicator(
-                              value: completionRate,
-                              minHeight: 12,
-                              backgroundColor: Colors.white.withValues(alpha: 0.12),
-                              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF4ADE80)),
+                      title: 'Assigned Task by User',
+                      subtitle: 'Current assigned dispatch task for your account',
+                      child: assignedTask.isEmpty
+                          ? const Text(
+                              'No active assigned task right now.',
+                              style: TextStyle(color: Colors.white60),
+                            )
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Row(
+                                  children: <Widget>[
+                                    Expanded(
+                                      child: Text(
+                                        'Task #${assignedTask['id']} • ${assignedTaskVehicle['plateNumber'] ?? 'N/A'}',
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: _statusColor((assignedTask['status'] ?? '').toString()).withValues(alpha: 0.2),
+                                        borderRadius: BorderRadius.circular(999),
+                                        border: Border.all(
+                                          color: _statusColor((assignedTask['status'] ?? '').toString()).withValues(alpha: 0.5),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        _toLabel(assignedTask['statusLabel'] ?? assignedTask['status'] ?? 'Unknown'),
+                                        style: TextStyle(
+                                          color: _statusColor((assignedTask['status'] ?? '').toString()),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  'Vehicle type: ${assignedTaskVehicle['type'] ?? 'Vehicle'}',
+                                  style: const TextStyle(fontSize: 12, color: Colors.white70),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Pickup: ${assignedTaskRoutePickup['lat'] ?? '--'}, ${assignedTaskRoutePickup['lng'] ?? '--'}',
+                                  style: const TextStyle(fontSize: 12, color: Colors.white70),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Destination: ${assignedTaskRouteDestination['lat'] ?? '--'}, ${assignedTaskRouteDestination['lng'] ?? '--'}',
+                                  style: const TextStyle(fontSize: 12, color: Colors.white70),
+                                ),
+                                const SizedBox(height: 10),
+                                Row(
+                                  children: <Widget>[
+                                    Expanded(
+                                      child: Text(
+                                        'Live Weight: ${_safeToDouble(assignedTaskLive['currentWeightKg']).toStringAsFixed(0)} kg',
+                                        style: const TextStyle(fontSize: 12, color: Colors.white70),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Text(
+                                        'Speed: ${_safeToDouble(assignedTaskLive['speedKmh']).toStringAsFixed(0)} km/h',
+                                        textAlign: TextAlign.right,
+                                        style: const TextStyle(fontSize: 12, color: Colors.white70),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton.icon(
+                                    onPressed: () {
+                                      AppTabService.selectTab(1);
+                                    },
+                                    icon: const Icon(Icons.task_rounded, size: 16),
+                                    label: const Text('Open Task Details'),
+                                    style: TextButton.styleFrom(foregroundColor: const Color(0xFF4ADE80)),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '${(completionRate * 100).toStringAsFixed(0)}% complete',
-                            style: const TextStyle(fontSize: 12, color: Colors.white60),
-                          ),
-                        ],
-                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _ChartCard(
+                      title: 'Incident Table (Recent)',
+                      subtitle: 'Latest incidents for your assigned tasks/vehicle',
+                      child: recentIncidents.isEmpty
+                          ? const Text(
+                              'No incidents found for this user.',
+                              style: TextStyle(color: Colors.white60),
+                            )
+                          : Column(
+                              children: recentIncidents.map((incident) {
+                                final String severity = (incident['severity'] ?? 'warning').toString();
+                                final Color severityColor = _severityColor(severity);
+
+                                return Container(
+                                  width: double.infinity,
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.03),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(color: Colors.white12),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      Row(
+                                        children: <Widget>[
+                                          Expanded(
+                                            child: Text(
+                                              '${_toLabel(incident['incidentType'] ?? 'unknown')} • Task #${incident['taskId'] ?? '--'}',
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                            decoration: BoxDecoration(
+                                              color: severityColor.withValues(alpha: 0.18),
+                                              borderRadius: BorderRadius.circular(999),
+                                              border: Border.all(color: severityColor.withValues(alpha: 0.45)),
+                                            ),
+                                            child: Text(
+                                              _toLabel(severity),
+                                              style: TextStyle(
+                                                color: severityColor,
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 10,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        'Status: ${_toLabel(incident['status'] ?? 'open')} • Impact: ${_safeToDouble(incident['weightImpactKg']).toStringAsFixed(0)} kg',
+                                        style: const TextStyle(color: Colors.white70, fontSize: 11),
+                                      ),
+                                      if ((incident['description'] ?? '').toString().trim().isNotEmpty) ...<Widget>[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          (incident['description'] ?? '').toString(),
+                                          style: const TextStyle(color: Colors.white60, fontSize: 11),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            ),
                     ),
                     const SizedBox(height: 16),
                     Container(

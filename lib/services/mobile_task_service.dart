@@ -65,6 +65,7 @@ class MobileAssignedTask {
   final String title;
   final String tripCode;
   final String eta;
+  final double? initialReferenceWeightKg;
   final String pickupName;
   final double pickupLat;
   final double pickupLng;
@@ -73,6 +74,14 @@ class MobileAssignedTask {
   final double destinationLng;
   final int maxTruckKg;
   final String currentLocationLabel;
+  final String vehicleCurrentState;
+  final String vehicleCurrentLoadStatus;
+  final double? liveLatitude;
+  final double? liveLongitude;
+  final double liveSpeedKmh;
+  final double? liveHeading;
+  final double? liveCurrentWeightKg;
+  final DateTime? liveLastPingAt;
   final List<TaskTimelineStepData> timeline;
   final List<TaskInstructionStepData> detailedInstructions;
 
@@ -122,6 +131,7 @@ class MobileAssignedTask {
     required this.title,
     required this.tripCode,
     required this.eta,
+    required this.initialReferenceWeightKg,
     required this.pickupName,
     required this.pickupLat,
     required this.pickupLng,
@@ -130,12 +140,21 @@ class MobileAssignedTask {
     required this.destinationLng,
     required this.maxTruckKg,
     required this.currentLocationLabel,
+    required this.vehicleCurrentState,
+    required this.vehicleCurrentLoadStatus,
+    required this.liveLatitude,
+    required this.liveLongitude,
+    required this.liveSpeedKmh,
+    required this.liveHeading,
+    required this.liveCurrentWeightKg,
+    required this.liveLastPingAt,
     required this.timeline,
     required this.detailedInstructions,
   });
 
   factory MobileAssignedTask.fromJson(Map<String, dynamic> json) {
-    final Map<String, dynamic> vehicle = (json['vehicle'] is Map<String, dynamic>)
+    final Map<String, dynamic> vehicle =
+        (json['vehicle'] is Map<String, dynamic>)
         ? json['vehicle'] as Map<String, dynamic>
         : <String, dynamic>{};
     final Map<String, dynamic> driver = (json['driver'] is Map<String, dynamic>)
@@ -144,11 +163,16 @@ class MobileAssignedTask {
     final Map<String, dynamic> route = (json['route'] is Map<String, dynamic>)
         ? json['route'] as Map<String, dynamic>
         : <String, dynamic>{};
+    final Map<String, dynamic> live = (vehicle['live'] is Map<String, dynamic>)
+        ? vehicle['live'] as Map<String, dynamic>
+        : <String, dynamic>{};
 
-    final Map<String, dynamic> pickup = (route['pickup'] is Map<String, dynamic>)
+    final Map<String, dynamic> pickup =
+        (route['pickup'] is Map<String, dynamic>)
         ? route['pickup'] as Map<String, dynamic>
         : <String, dynamic>{};
-    final Map<String, dynamic> destination = (route['destination'] is Map<String, dynamic>)
+    final Map<String, dynamic> destination =
+        (route['destination'] is Map<String, dynamic>)
         ? route['destination'] as Map<String, dynamic>
         : <String, dynamic>{};
 
@@ -158,17 +182,18 @@ class MobileAssignedTask {
 
     final List<TaskTimelineStepData> timeline = (json['timeline'] is List)
         ? (json['timeline'] as List)
-            .whereType<Map<String, dynamic>>()
-            .map(TaskTimelineStepData.fromJson)
-            .toList()
+              .whereType<Map<String, dynamic>>()
+              .map(TaskTimelineStepData.fromJson)
+              .toList()
         : <TaskTimelineStepData>[];
 
-    final List<TaskInstructionStepData> detailedInstructions = (json['detailedInstructions'] is List)
-      ? (json['detailedInstructions'] as List)
-        .whereType<Map<String, dynamic>>()
-        .map(TaskInstructionStepData.fromJson)
-        .toList()
-      : <TaskInstructionStepData>[];
+    final List<TaskInstructionStepData> detailedInstructions =
+        (json['detailedInstructions'] is List)
+        ? (json['detailedInstructions'] as List)
+              .whereType<Map<String, dynamic>>()
+              .map(TaskInstructionStepData.fromJson)
+              .toList()
+        : <TaskInstructionStepData>[];
 
     return MobileAssignedTask(
       taskId: (json['assignmentId'] ?? '').toString(),
@@ -180,25 +205,66 @@ class MobileAssignedTask {
       title: (json['title'] ?? 'Assigned Task').toString(),
       tripCode: (json['stageLabel'] ?? 'Dispatch').toString(),
       eta: estDurationMin > 0 ? '$estDurationMin min' : 'TBD',
+      initialReferenceWeightKg: (json['initialReferenceWeightKg'] is num)
+          ? (json['initialReferenceWeightKg'] as num).toDouble()
+          : null,
       pickupName: (pickup['label'] ?? 'Pickup Point').toString(),
       pickupLat: (pickup['lat'] is num) ? (pickup['lat'] as num).toDouble() : 0,
       pickupLng: (pickup['lng'] is num) ? (pickup['lng'] as num).toDouble() : 0,
       destinationName: (destination['label'] ?? 'Destination Point').toString(),
-      destinationLat: (destination['lat'] is num) ? (destination['lat'] as num).toDouble() : 0,
-      destinationLng: (destination['lng'] is num) ? (destination['lng'] as num).toDouble() : 0,
-      maxTruckKg: (vehicle['maxCapacityKg'] is num) ? (vehicle['maxCapacityKg'] as num).round() : 0,
-      currentLocationLabel: (json['currentLocationLabel'] ?? 'Current Location').toString(),
+      destinationLat: (destination['lat'] is num)
+          ? (destination['lat'] as num).toDouble()
+          : 0,
+      destinationLng: (destination['lng'] is num)
+          ? (destination['lng'] as num).toDouble()
+          : 0,
+      maxTruckKg: (vehicle['maxCapacityKg'] is num)
+          ? (vehicle['maxCapacityKg'] as num).round()
+          : 0,
+      currentLocationLabel: (json['currentLocationLabel'] ?? 'Current Location')
+          .toString(),
+      vehicleCurrentState: (vehicle['currentState'] ?? '').toString().trim(),
+      vehicleCurrentLoadStatus: (vehicle['currentLoadStatus'] ?? '')
+          .toString()
+          .trim(),
+      liveLatitude: (live['latitude'] is num)
+          ? (live['latitude'] as num).toDouble()
+          : (vehicle['liveLatitude'] is num)
+          ? (vehicle['liveLatitude'] as num).toDouble()
+          : null,
+      liveLongitude: (live['longitude'] is num)
+          ? (live['longitude'] as num).toDouble()
+          : (vehicle['liveLongitude'] is num)
+          ? (vehicle['liveLongitude'] as num).toDouble()
+          : null,
+      liveSpeedKmh: (live['speedKmh'] is num)
+          ? (live['speedKmh'] as num).toDouble()
+          : (vehicle['liveSpeedKmh'] is num)
+          ? (vehicle['liveSpeedKmh'] as num).toDouble()
+          : 0,
+      liveHeading: (live['heading'] is num)
+          ? (live['heading'] as num).toDouble()
+          : (vehicle['liveHeading'] is num)
+          ? (vehicle['liveHeading'] as num).toDouble()
+          : null,
+      liveCurrentWeightKg: (live['currentWeightKg'] is num)
+          ? (live['currentWeightKg'] as num).toDouble()
+          : (vehicle['liveCurrentWeightKg'] is num)
+          ? (vehicle['liveCurrentWeightKg'] as num).toDouble()
+          : null,
+      liveLastPingAt: DateTime.tryParse(
+        (live['lastPingAt'] ?? vehicle['liveLastPingAt'] ?? '').toString(),
+      ),
       timeline: timeline,
       detailedInstructions: detailedInstructions,
     );
   }
 
   static String _normalizeStatus(dynamic value) {
-    return (value ?? 'pending')
-        .toString()
-        .trim()
-        .toLowerCase()
-        .replaceAll('-', '_');
+    return (value ?? 'pending').toString().trim().toLowerCase().replaceAll(
+      '-',
+      '_',
+    );
   }
 
   static String _statusCopy(
@@ -230,15 +296,23 @@ class MobileAssignedTask {
 class MobileTaskService {
   static MobileAssignedTask? _cachedTask;
   static DateTime? _cachedAt;
-  static const Duration _cacheTtl = Duration(seconds: 20);
-  static const Duration _pollingInterval = Duration(seconds: 10);
+  static const Duration _cacheTtl = Duration(seconds: 5);
+  static const Duration _pollingInterval = Duration(milliseconds: 420);
   static Timer? _pollingTimer;
+  static bool _isPollingRequestInFlight = false;
 
-  static final ValueNotifier<MobileAssignedTask?> currentTaskNotifier = ValueNotifier<MobileAssignedTask?>(null);
-  static final ValueNotifier<bool> isLoadingNotifier = ValueNotifier<bool>(false);
-  static final ValueNotifier<String?> taskErrorNotifier = ValueNotifier<String?>(null);
-  static final ValueNotifier<DateTime?> lastUpdatedNotifier = ValueNotifier<DateTime?>(null);
-  static final ValueNotifier<bool> isPollingNotifier = ValueNotifier<bool>(false);
+  static final ValueNotifier<MobileAssignedTask?> currentTaskNotifier =
+      ValueNotifier<MobileAssignedTask?>(null);
+  static final ValueNotifier<bool> isLoadingNotifier = ValueNotifier<bool>(
+    false,
+  );
+  static final ValueNotifier<String?> taskErrorNotifier =
+      ValueNotifier<String?>(null);
+  static final ValueNotifier<DateTime?> lastUpdatedNotifier =
+      ValueNotifier<DateTime?>(null);
+  static final ValueNotifier<bool> isPollingNotifier = ValueNotifier<bool>(
+    false,
+  );
 
   static bool _hasValidCache() {
     if (_cachedAt == null) {
@@ -254,7 +328,9 @@ class MobileTaskService {
     lastUpdatedNotifier.value = _cachedAt;
   }
 
-  static Future<MobileAssignedTask?> fetchCurrentTask({bool forceRefresh = false}) async {
+  static Future<MobileAssignedTask?> fetchCurrentTask({
+    bool forceRefresh = false,
+  }) async {
     if (!forceRefresh && _hasValidCache()) {
       return _cachedTask;
     }
@@ -267,13 +343,9 @@ class MobileTaskService {
     final uri = Uri.parse('${AppEnv.apiBaseUrl}${ApiRoutes.mobileTaskCurrent}');
 
     try {
-      final response = await http.get(
-        uri,
-        headers: {
-          'Accept': 'application/json',
-          ...authHeaders,
-        },
-      ).timeout(const Duration(seconds: 12));
+      final response = await http
+          .get(uri, headers: {'Accept': 'application/json', ...authHeaders})
+          .timeout(const Duration(seconds: 12));
 
       final Map<String, dynamic> payload = response.body.isEmpty
           ? <String, dynamic>{}
@@ -284,7 +356,7 @@ class MobileTaskService {
         if (data is! Map<String, dynamic>) {
           return null;
         }
-        
+
         final task = MobileAssignedTask.fromJson(data);
         return task;
       }
@@ -293,9 +365,13 @@ class MobileTaskService {
         await AuthSessionService.clearSession();
       }
 
-      throw Exception((payload['message'] ?? 'Failed to load current task.').toString());
+      throw Exception(
+        (payload['message'] ?? 'Failed to load current task.').toString(),
+      );
     } on SocketException {
-      throw Exception('Cannot connect to server. Please check your internet and API URL.');
+      throw Exception(
+        'Cannot connect to server. Please check your internet and API URL.',
+      );
     } on TimeoutException {
       throw Exception('Task request timed out. Please try again.');
     }
@@ -308,7 +384,10 @@ class MobileTaskService {
       _setTask(task);
       taskErrorNotifier.value = null;
     } catch (error) {
-      taskErrorNotifier.value = error.toString().replaceFirst('Exception: ', '');
+      taskErrorNotifier.value = error.toString().replaceFirst(
+        'Exception: ',
+        '',
+      );
       if (_cachedTask != null) {
         currentTaskNotifier.value = _cachedTask;
       } else {
@@ -319,7 +398,9 @@ class MobileTaskService {
     }
   }
 
-  static Future<MobileAssignedTask?> startCurrentTask() async {
+  static Future<MobileAssignedTask?> startCurrentTask({
+    double? initialReferenceWeightKg,
+  }) async {
     final authHeaders = await AuthSessionService.getAuthHeaders();
     if (authHeaders.isEmpty) {
       throw Exception('No active session found. Please login again.');
@@ -328,13 +409,22 @@ class MobileTaskService {
     final uri = Uri.parse('${AppEnv.apiBaseUrl}${ApiRoutes.mobileTaskStart}');
 
     try {
-      final response = await http.patch(
-        uri,
-        headers: {
-          'Accept': 'application/json',
-          ...authHeaders,
-        },
-      ).timeout(const Duration(seconds: 12));
+      final Map<String, dynamic> payloadBody = <String, dynamic>{};
+      if (initialReferenceWeightKg != null) {
+        payloadBody['initialReferenceWeightKg'] = initialReferenceWeightKg;
+      }
+
+      final response = await http
+          .patch(
+            uri,
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              ...authHeaders,
+            },
+            body: jsonEncode(payloadBody),
+          )
+          .timeout(const Duration(seconds: 12));
 
       final Map<String, dynamic> payload = response.body.isEmpty
           ? <String, dynamic>{}
@@ -358,11 +448,61 @@ class MobileTaskService {
         await AuthSessionService.clearSession();
       }
 
-      throw Exception((payload['message'] ?? 'Failed to start current task.').toString());
+      throw Exception(
+        (payload['message'] ?? 'Failed to start current task.').toString(),
+      );
     } on SocketException {
-      throw Exception('Cannot connect to server. Please check your internet and API URL.');
+      throw Exception(
+        'Cannot connect to server. Please check your internet and API URL.',
+      );
     } on TimeoutException {
       throw Exception('Task start request timed out. Please try again.');
+    }
+  }
+
+  static Future<void> completeCurrentTask() async {
+    final authHeaders = await AuthSessionService.getAuthHeaders();
+    if (authHeaders.isEmpty) {
+      throw Exception('No active session found. Please login again.');
+    }
+
+    final uri = Uri.parse('${AppEnv.apiBaseUrl}${ApiRoutes.mobileTaskComplete}');
+
+    try {
+      final response = await http
+          .patch(
+            uri,
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              ...authHeaders,
+            },
+          )
+          .timeout(const Duration(seconds: 12));
+
+      final Map<String, dynamic> payload = response.body.isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(response.body) as Map<String, dynamic>;
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        await refreshCurrentTask(forceRefresh: true);
+        taskErrorNotifier.value = null;
+        return;
+      }
+
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        await AuthSessionService.clearSession();
+      }
+
+      throw Exception(
+        (payload['message'] ?? 'Failed to complete current task.').toString(),
+      );
+    } on SocketException {
+      throw Exception(
+        'Cannot connect to server. Please check your internet and API URL.',
+      );
+    } on TimeoutException {
+      throw Exception('Task completion request timed out. Please try again.');
     }
   }
 
@@ -372,7 +512,13 @@ class MobileTaskService {
     _pollingTimer?.cancel();
     isPollingNotifier.value = false;
     _pollingTimer = Timer.periodic(_pollingInterval, (_) async {
+      if (_isPollingRequestInFlight) {
+        return;
+      }
+
+      _isPollingRequestInFlight = true;
       await refreshCurrentTask(forceRefresh: true);
+      _isPollingRequestInFlight = false;
     });
     isPollingNotifier.value = true;
   }
@@ -380,8 +526,10 @@ class MobileTaskService {
   static void stopPeriodicPolling() {
     _pollingTimer?.cancel();
     _pollingTimer = null;
+    _isPollingRequestInFlight = false;
     isPollingNotifier.value = false;
   }
 
-  static bool get isPollingActive => _pollingTimer != null && _pollingTimer!.isActive;
+  static bool get isPollingActive =>
+      _pollingTimer != null && _pollingTimer!.isActive;
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mobile/widget/navbar.dart';
 
+import '../services/app_tab_service.dart';
 import '../services/auth_session_service.dart';
 import '../services/mobile_auth_service.dart';
 import 'login_screen.dart';
@@ -80,6 +81,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   String get _joinedAt {
     return _profileLoaded ? 'Authenticated Session' : 'Loading profile...';
+  }
+
+  bool get _mustChangePassword {
+    return AuthSessionService.currentUserPasswordChangeNotifier.value;
   }
 
   void _confirmPasswordChange() {
@@ -169,13 +174,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password updated successfully.')),
+        const SnackBar(content: Text('Password updated successfully. Redirecting to Dashboard.')),
       );
 
       _currentPassController.clear();
       _newPassController.clear();
       _confirmPassController.clear();
       FocusScope.of(context).unfocus();
+
+      AppTabService.selectTab(0);
     } catch (error) {
       if (!mounted) {
         return;
@@ -194,6 +201,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showLogoutDialog(BuildContext context) {
+    if (_mustChangePassword) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please change your password before logging out.'),
+        ),
+      );
+      return;
+    }
+
     showDialog<void>(
       context: context,
       builder: (BuildContext context) {
@@ -239,6 +255,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showResetCoachGuideDialog() {
+    if (_mustChangePassword) {
+      return;
+    }
+
     showDialog<void>(
       context: context,
       builder: (BuildContext context) {
@@ -335,6 +355,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 subtitle: 'Profile and account actions',
               ),
               const SizedBox(height: 18),
+              if (_mustChangePassword) ...<Widget>[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF7F1D1D).withValues(alpha: 0.22),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.30)),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        'Password change required',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        'Your account must change its password before you can continue to other parts of the app. Stay here and complete the password update to unlock navigation.',
+                        style: TextStyle(color: Colors.white70, fontSize: 12.5, height: 1.4),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(18),
@@ -475,8 +525,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                 ),
                               )
-                            : const Text(
-                                'Confirm Password Change',
+                            : Text(
+                                _mustChangePassword
+                                    ? 'Update Password to Unlock App'
+                                    : 'Confirm Password Change',
                                 style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
                               ),
                       ),
@@ -485,55 +537,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 18),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _isResettingCoachGuide ? null : _showResetCoachGuideDialog,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0C2B22),
-                    foregroundColor: const Color(0xFF86EFAC),
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      side: const BorderSide(color: Colors.white12),
+              if (!_mustChangePassword) ...<Widget>[
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _isResettingCoachGuide ? null : _showResetCoachGuideDialog,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0C2B22),
+                      foregroundColor: const Color(0xFF86EFAC),
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        side: const BorderSide(color: Colors.white12),
+                      ),
+                    ),
+                    icon: _isResettingCoachGuide
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF86EFAC)),
+                            ),
+                          )
+                        : const Icon(Icons.school_rounded, size: 18),
+                    label: Text(
+                      _isResettingCoachGuide ? 'Resetting Guide...' : 'Show Coach Guide Again',
+                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
                     ),
                   ),
-                  icon: _isResettingCoachGuide
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF86EFAC)),
-                          ),
-                        )
-                      : const Icon(Icons.school_rounded, size: 18),
-                  label: Text(
-                    _isResettingCoachGuide ? 'Resetting Guide...' : 'Show Coach Guide Again',
-                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
-                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () => _showLogoutDialog(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF7F1D1D).withValues(alpha: 0.65),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showLogoutDialog(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF7F1D1D).withValues(alpha: 0.65),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    icon: const Icon(Icons.logout_rounded, size: 18),
+                    label: const Text(
+                      'Logout',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
                     ),
                   ),
-                  icon: const Icon(Icons.logout_rounded, size: 18),
-                  label: const Text(
-                    'Logout',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),

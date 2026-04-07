@@ -41,7 +41,7 @@ class _SplashScreenState extends State<SplashScreen> {
     Navigator.of(context).pushReplacement(
       PageRouteBuilder<void>(
         transitionDuration: const Duration(milliseconds: 450),
-        pageBuilder: (_, __, ___) => targetScreen,
+        pageBuilder: (_, _, _) => targetScreen,
         transitionsBuilder: (
           BuildContext context,
           Animation<double> animation,

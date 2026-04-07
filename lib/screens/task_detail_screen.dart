@@ -1,24 +1,187 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:mobile/services/app_tab_service.dart';
 import 'package:mobile/services/mobile_task_service.dart';
 
 import 'task_runtime_store.dart';
 
 class TaskDetailScreen extends StatefulWidget {
   final dynamic task;
+  final bool autoPromptUnload;
 
-  const TaskDetailScreen({super.key, required this.task});
+  const TaskDetailScreen({
+    super.key,
+    required this.task,
+    this.autoPromptUnload = false,
+  });
 
   @override
   State<TaskDetailScreen> createState() => _TaskDetailScreenState();
 }
 
 class _TaskDetailScreenState extends State<TaskDetailScreen> {
+  static const double _unloadConfirmThresholdKg = 0.1;
+  static const double _pickupArrivalThresholdMeters = 20;
+
   TaskRuntimeController? _runtime;
+
+  MobileAssignedTask? _liveTaskSnapshot;
+  bool _didAutoPromptUnload = false;
+
+  String get _taskId => widget.task.taskId as String;
+
+  MobileAssignedTask get _taskView =>
+      _liveTaskSnapshot ?? widget.task as MobileAssignedTask;
+
+  void _syncLiveTaskSnapshot() {
+    final MobileAssignedTask? currentTask =
+        MobileTaskService.currentTaskNotifier.value;
+    if (currentTask != null && currentTask.taskId == _taskId) {
+      _liveTaskSnapshot = currentTask;
+    }
+  }
+
+  String get _dispatchStatus =>
+      _taskView.dispatchStatus.toString().trim().toLowerCase();
+
+  bool get _isPendingStage => _dispatchStatus == 'pending';
+
+  bool get _isPickupVerifiedStage => _dispatchStatus == 'active';
+
+  bool get _isPickupArrivalConfirmed {
+    if (AppTabService.isPickupArrived(_taskId)) {
+      return true;
+    }
+
+    final double? liveLat = _taskView.liveLatitude;
+    final double? liveLng = _taskView.liveLongitude;
+    if (liveLat == null || liveLng == null) {
+      return false;
+    }
+
+    return _distanceMeters(
+          LatLng(liveLat, liveLng),
+          LatLng(_taskView.pickupLat, _taskView.pickupLng),
+        ) <=
+        _pickupArrivalThresholdMeters;
+  }
+
+  bool get _canConfirmPickupLoading {
+    return _isPickupVerifiedStage && _isPickupArrivalConfirmed;
+  }
+
+  String get _beginButtonLabel {
+    if (_isPendingStage) {
+      return 'Begin Task (Go to Pickup)';
+    }
+    if (_isPickupVerifiedStage) {
+      return _canConfirmPickupLoading
+          ? 'Confirm & Continue'
+          : 'Await Pickup Arrival';
+    }
+    if (_dispatchStatus == 'in_transit') {
+      return 'Unload Cargo & Complete';
+    }
+    if (_dispatchStatus == 'completed') {
+      return 'Task Completed';
+    }
+    if (_dispatchStatus == 'cancelled') {
+      return 'Task Cancelled';
+    }
+    return 'Begin Task';
+  }
+
+  double _distanceMeters(LatLng from, LatLng to) {
+    const double earthRadius = 6371000;
+    final double dLat = (to.latitude - from.latitude) * math.pi / 180;
+    final double dLng = (to.longitude - from.longitude) * math.pi / 180;
+    final double a =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(from.latitude * math.pi / 180) *
+            math.cos(to.latitude * math.pi / 180) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+    return earthRadius * (2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)));
+  }
+
+  String _liveVehicleStateLabel() {
+    final String state = _taskView.vehicleCurrentState.toString().trim();
+    return state.isEmpty ? 'Unknown' : state;
+  }
+
+  String _liveLoadStatusLabel() {
+    final String status = _taskView.vehicleCurrentLoadStatus.toString().trim();
+    return status.isEmpty ? 'Unknown' : status;
+  }
+
+  String _liveCurrentWeightLabel() {
+    final double? rawWeight = _resolvedLiveCurrentWeightKg();
+    if (rawWeight == null) {
+      return '-- kg';
+    }
+    return '${rawWeight.toDouble().toStringAsFixed(0)} kg';
+  }
+
+  double? _resolvedLiveCurrentWeightKg() {
+    final dynamic taskWeight = _taskView.liveCurrentWeightKg;
+    if (taskWeight is num) {
+      return taskWeight.toDouble();
+    }
+
+    final TaskRuntimeController? runtime = _runtime;
+    if (runtime != null) {
+      return runtime.latestWeightKg;
+    }
+
+    return null;
+  }
 
   @override
   void initState() {
     super.initState();
-    _runtime = TaskRuntimeStore.existing(widget.task.taskId as String);
+    _runtime = TaskRuntimeStore.existing(_taskId);
+    _syncLiveTaskSnapshot();
+    MobileTaskService.currentTaskNotifier.addListener(_handleTaskSnapshotUpdate);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeAutoPromptUnload();
+    });
+  }
+
+  @override
+  void dispose() {
+    MobileTaskService.currentTaskNotifier.removeListener(
+      _handleTaskSnapshotUpdate,
+    );
+    super.dispose();
+  }
+
+  void _handleTaskSnapshotUpdate() {
+    if (!mounted) {
+      return;
+    }
+
+    final MobileAssignedTask? currentTask =
+        MobileTaskService.currentTaskNotifier.value;
+    if (currentTask != null && currentTask.taskId == _taskId) {
+      setState(() {
+        _liveTaskSnapshot = currentTask;
+      });
+    }
+  }
+
+  void _maybeAutoPromptUnload() {
+    if (!mounted || _didAutoPromptUnload || !widget.autoPromptUnload) {
+      return;
+    }
+
+    if (_dispatchStatus != 'in_transit') {
+      return;
+    }
+
+    _didAutoPromptUnload = true;
+    _confirmUnloadAndComplete();
   }
 
   String _fmt(DateTime value) {
@@ -27,6 +190,29 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
   Future<void> _confirmBeginTask() async {
+    if (_dispatchStatus == 'in_transit') {
+      await _confirmUnloadAndComplete();
+      return;
+    }
+
+    if (_dispatchStatus == 'completed' || _dispatchStatus == 'cancelled') {
+      return;
+    }
+
+    if (_isPickupVerifiedStage) {
+      if (!_isPickupArrivalConfirmed) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Wait until the vehicle reaches the pickup point.'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+        return;
+      }
+      await _confirmInitialReferenceWeight();
+      return;
+    }
+
     final bool? shouldStart = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -113,7 +299,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                           ),
-                          child: const Text('Start Task', style: TextStyle(fontWeight: FontWeight.w700)),
+                          child: const Text('Start Pickup Trip', style: TextStyle(fontWeight: FontWeight.w700)),
                         ),
                       ),
                     ],
@@ -131,6 +317,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     }
 
     try {
+      AppTabService.clearPickupArrived(_taskId);
       await MobileTaskService.startCurrentTask();
       // Force refresh to ensure UI is synced with latest server state
       await MobileTaskService.refreshCurrentTask(forceRefresh: true);
@@ -149,8 +336,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     }
 
     final runtime = TaskRuntimeStore.forTask(
-      taskId: widget.task.taskId as String,
-      maxKg: widget.task.maxTruckKg as int,
+      taskId: _taskId,
+      maxKg: _taskView.maxTruckKg,
     );
     runtime.start();
 
@@ -158,12 +345,421 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       _runtime = runtime;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Task started. Follow the detailed instruction above.'),
-        duration: Duration(seconds: 2),
-      ),
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Pickup trip started. Redirecting to Trips.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+
+    AppTabService.selectTab(2);
+    AppTabService.revealTripNavigation();
+    if (mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  Future<void> _confirmUnloadAndComplete() async {
+    final bool? shouldComplete = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final List<Listenable> listenables = <Listenable>[
+          MobileTaskService.currentTaskNotifier,
+          if (_runtime != null) _runtime! as Listenable,
+        ];
+
+        return AnimatedBuilder(
+          animation: Listenable.merge(listenables),
+          builder: (context, _) {
+            final double? liveWeight = _resolvedLiveCurrentWeightKg();
+            final bool canComplete =
+                liveWeight != null && liveWeight <= _unloadConfirmThresholdKg;
+
+            return SafeArea(
+              child: Container(
+                width: double.infinity,
+                padding: EdgeInsets.only(
+                  left: 20,
+                  right: 20,
+                  top: 14,
+                  bottom: 20 + MediaQuery.of(context).padding.bottom,
+                ),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF0C2B22),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Center(
+                        child: Container(
+                          width: 44,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: Colors.white24,
+                            borderRadius: BorderRadius.circular(99),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      const Text(
+                        'Unload Cargo Confirmation',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Unload all cargo at destination. Completion is allowed only when current load reaches zero.',
+                        style: TextStyle(color: Colors.white70, fontSize: 13.5),
+                      ),
+                      const SizedBox(height: 14),
+                      _ConfirmSummaryCard(
+                        icon: Icons.monitor_weight_rounded,
+                        label: 'Current load',
+                        value: liveWeight == null
+                            ? '-- kg'
+                            : '${liveWeight.toStringAsFixed(1)} kg',
+                      ),
+                      const SizedBox(height: 10),
+                      _ConfirmSummaryCard(
+                        icon: Icons.local_shipping_rounded,
+                        label: 'Live vehicle state',
+                        value:
+                            '${_liveVehicleStateLabel()} • ${_liveLoadStatusLabel()}',
+                      ),
+                      if (!canComplete) ...<Widget>[
+                        const SizedBox(height: 14),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF7F1D1D).withValues(alpha: 0.24),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: const Color(0xFFEF4444).withValues(alpha: 0.32),
+                            ),
+                          ),
+                          child: const Text(
+                            'Current load is not zero yet. Continue unloading to 0.0 kg to complete this dispatch task.',
+                            style: TextStyle(color: Colors.white70, fontSize: 12.5),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.of(context).pop(false),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white70,
+                                side: const BorderSide(color: Colors.white24),
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: const Text('Cancel'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: canComplete
+                                  ? () => Navigator.of(context).pop(true)
+                                  : null,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF1A7B51),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: const Text(
+                                'Confirm Unloaded & Complete',
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
+
+    if (shouldComplete != true || !mounted) {
+      return;
+    }
+
+    try {
+      await MobileTaskService.completeCurrentTask();
+      await MobileTaskService.refreshCurrentTask(forceRefresh: true);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Dispatch task completed successfully.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+
+    AppTabService.selectTab(1);
+    if (mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  Future<void> _confirmInitialReferenceWeight() async {
+    final int maxTruckKg = (widget.task.maxTruckKg is num)
+        ? (widget.task.maxTruckKg as num).toInt()
+        : 0;
+    final double? liveCurrentWeight = _resolvedLiveCurrentWeightKg();
+
+    if (liveCurrentWeight == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Live current weight is not available yet.'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+
+    final double? submittedWeight = await showModalBottomSheet<double>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final List<Listenable> listenables = <Listenable>[
+          MobileTaskService.currentTaskNotifier,
+          if (_runtime != null) _runtime! as Listenable,
+        ];
+
+        return AnimatedBuilder(
+          animation: Listenable.merge(listenables),
+          builder: (context, _) {
+            final double? modalLiveWeight = _resolvedLiveCurrentWeightKg();
+            final bool modalIsOverCapacity =
+                modalLiveWeight != null && modalLiveWeight > maxTruckKg.toDouble();
+
+            return SafeArea(
+              child: Container(
+                width: double.infinity,
+                padding: EdgeInsets.only(
+                  left: 20,
+                  right: 20,
+                  top: 14,
+                  bottom: 20 + MediaQuery.of(context).padding.bottom,
+                ),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF0C2B22),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Center(
+                        child: Container(
+                          width: 44,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: Colors.white24,
+                            borderRadius: BorderRadius.circular(99),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      const Text(
+                        'Confirm live cargo weight',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'The live scale reading will be used as the initial reference weight. Confirm it before proceeding to destination.',
+                        style: TextStyle(color: Colors.white70, fontSize: 13.5),
+                      ),
+                      const SizedBox(height: 14),
+                      _ConfirmSummaryCard(
+                        icon: Icons.scale_rounded,
+                        label: 'Truck max capacity',
+                        value: '$maxTruckKg kg',
+                      ),
+                      const SizedBox(height: 10),
+                      _ConfirmSummaryCard(
+                        icon: Icons.monitor_weight_rounded,
+                        label: 'Live current weight',
+                        value: modalLiveWeight == null
+                            ? '-- kg'
+                            : '${modalLiveWeight.toStringAsFixed(0)} kg',
+                      ),
+                      const SizedBox(height: 10),
+                      _ConfirmSummaryCard(
+                        icon: Icons.local_shipping_rounded,
+                        label: 'Live vehicle state',
+                        value:
+                            '${_liveVehicleStateLabel()} • ${_liveLoadStatusLabel()}',
+                      ),
+                      if (modalIsOverCapacity) ...<Widget>[
+                        const SizedBox(height: 14),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF7F1D1D).withValues(alpha: 0.24),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: const Color(0xFFEF4444).withValues(alpha: 0.32),
+                            ),
+                          ),
+                          child: const Text(
+                            'Live weight exceeds truck max capacity. Confirm is blocked until the load is within limit.',
+                            style: TextStyle(color: Colors.white70, fontSize: 12.5),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white70,
+                                side: const BorderSide(color: Colors.white24),
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: const Text('Cancel'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: modalIsOverCapacity || modalLiveWeight == null
+                                  ? null
+                                  : () => Navigator.of(context).pop(modalLiveWeight),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF1A7B51),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: const Text(
+                                'Confirm & Continue',
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (submittedWeight == null || !mounted) {
+      return;
+    }
+
+    try {
+      AppTabService.clearPickupArrived(_taskId);
+      await MobileTaskService.startCurrentTask(
+        initialReferenceWeightKg: submittedWeight,
+      );
+      await MobileTaskService.refreshCurrentTask(forceRefresh: true);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    final MobileAssignedTask? refreshedTask =
+        MobileTaskService.currentTaskNotifier.value;
+    final String refreshedStatus =
+        refreshedTask?.dispatchStatus.toLowerCase().trim() ?? '';
+    if (refreshedTask == null || refreshedStatus != 'in_transit') {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Weight saved but task is not yet in transit. Please refresh task state.',
+            ),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Reference weight saved. Heading to destination.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+
+    AppTabService.revealTripNavigation();
+    AppTabService.selectTab(2);
+    if (mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
   }
 
   ({bool isDone, bool isActive}) _resolveStepState(int index) {
@@ -302,20 +898,56 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                '${widget.task.pickupName} → ${widget.task.destinationName}',
+                '${_taskView.pickupName} → ${_taskView.destinationName}',
                 style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 4),
               Text(
-                '${widget.task.summaryLabel}  •  ETA ${widget.task.eta}',
+                '${_taskView.summaryLabel}  •  ETA ${_taskView.eta}',
                 style: const TextStyle(color: Colors.white60, fontSize: 12),
               ),
               const SizedBox(height: 2),
               Text(
-                '${widget.task.vehiclePlateNumber}  •  ${widget.task.vehicleType}',
+                '${_taskView.vehiclePlateNumber}  •  ${_taskView.vehicleType}',
                 style: const TextStyle(color: Colors.white60, fontSize: 12),
               ),
               const SizedBox(height: 14),
+              _Card(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Text(
+                      'Vehicle Live State',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Current state: ${_liveVehicleStateLabel()}',
+                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Load status: ${_liveLoadStatusLabel()}',
+                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Live current weight: ${_liveCurrentWeightLabel()}',
+                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Maximum capacity: ${_taskView.maxTruckKg} kg',
+                      style: const TextStyle(color: Colors.white60, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
               if (_runtime != null)
                 AnimatedBuilder(
                   animation: _runtime!,
@@ -352,17 +984,17 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               const SizedBox(height: 12),
               _InfoCard(
                 title: 'Pickup Point',
-                locationName: widget.task.pickupName as String,
-                lat: widget.task.pickupLat as double,
-                lng: widget.task.pickupLng as double,
+                locationName: _taskView.pickupName,
+                lat: _taskView.pickupLat,
+                lng: _taskView.pickupLng,
                 icon: Icons.my_location_rounded,
               ),
               const SizedBox(height: 12),
               _InfoCard(
                 title: 'Destination Point',
-                locationName: widget.task.destinationName as String,
-                lat: widget.task.destinationLat as double,
-                lng: widget.task.destinationLng as double,
+                locationName: _taskView.destinationName,
+                lat: _taskView.destinationLat,
+                lng: _taskView.destinationLng,
                 icon: Icons.place_outlined,
               ),
               const SizedBox(height: 12),
@@ -376,9 +1008,22 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Align and load cargo within max truck limit: ${widget.task.maxTruckKg} kg.',
+                      'Align and load cargo within max truck limit: ${_taskView.maxTruckKg} kg.',
                       style: const TextStyle(color: Colors.white70, fontSize: 13),
                     ),
+                    const SizedBox(height: 10),
+                    if (_isPickupVerifiedStage)
+                      Text(
+                        _isPickupArrivalConfirmed
+                            ? 'Pickup reached. Use the live weight below to confirm loading and continue.'
+                            : 'Vehicle has not reached the pickup point yet. Loading confirmation stays disabled until arrival.',
+                        style: TextStyle(
+                          color: _isPickupArrivalConfirmed
+                              ? const Color(0xFF4ADE80)
+                              : Colors.white60,
+                          fontSize: 12.5,
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -401,13 +1046,17 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
-                  onPressed: _confirmBeginTask,
+                  onPressed: (_dispatchStatus == 'completed' ||
+                    _dispatchStatus == 'cancelled' ||
+                          (_isPickupVerifiedStage && !_canConfirmPickupLoading))
+                      ? null
+                      : _confirmBeginTask,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF1A7B51),
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   ),
-                  child: const Text('Begin Task', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                  child: Text(_beginButtonLabel, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
                 ),
               ),
             ],
@@ -434,38 +1083,6 @@ class _Card extends StatelessWidget {
         border: Border.all(color: Colors.white12),
       ),
       child: child,
-    );
-  }
-}
-
-class _DialogRow extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _DialogRow({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          SizedBox(
-            width: 92,
-            child: Text(
-              label,
-              style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w600),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
